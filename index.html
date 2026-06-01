@@ -1259,7 +1259,10 @@ function setBulk(key, val) {
   bulkAnswers[key] = val;
   var sections = {dpm:'bulkDpmSection',clips:'bulkClipsSection',sub:'bulkSubSection',cast:'bulkCastSection',insulation:'bulkInsulationSection'};
   var sec = document.getElementById(sections[key]);
-  if(sec) sec.querySelectorAll('.q-btn').forEach(function(btn){ btn.classList.toggle('sel', btn.textContent.trim()===val); });
+  if(sec) sec.querySelectorAll('.q-btn').forEach(function(btn){
+    var matches = btn.textContent.trim() === val || btn.textContent.trim().indexOf(val) === 0;
+    btn.classList.toggle('sel', matches);
+  });
   Object.keys(panels).forEach(function(id) {
     var nid = parseInt(id);
     var p = panels[nid];
