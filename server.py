@@ -332,12 +332,23 @@ def extract_areas_from_chars_data(chars):
         raw_text = decode_cid(''.join(c['text'] for c in row_chars))
         if re.search(r'Gross\s*Floor\s*Area', raw_text, re.IGNORECASE):
             vals = _parse_area_row(row_chars, raw_text)
+            if not vals and idx_r + 1 < len(sorted_items):
+                # Values may be on the very next row (0.5pt below label)
+                next_chars = sorted(sorted_items[idx_r+1][1], key=lambda c: c['x0'])
+                next_text = decode_cid(''.join(c['text'] for c in next_chars))
+                vals = re.findall(r'(\d+\.\d+)\s*m', next_text)
+                vals = [float(v) for v in vals if 0 < float(v) < 300]
             if not vals and idx_r > 0:
                 prev_chars = sorted(sorted_items[idx_r-1][1], key=lambda c: c['x0'])
                 vals = _extract_values_from_chars(prev_chars)
             gross_areas = vals
         elif re.search(r'Net\s*Floor\s*Area', raw_text, re.IGNORECASE):
             vals = _parse_area_row(row_chars, raw_text)
+            if not vals and idx_r + 1 < len(sorted_items):
+                next_chars = sorted(sorted_items[idx_r+1][1], key=lambda c: c['x0'])
+                next_text = decode_cid(''.join(c['text'] for c in next_chars))
+                vals = re.findall(r'(\d+\.\d+)\s*m', next_text)
+                vals = [float(v) for v in vals if 0 < float(v) < 300]
             if not vals and idx_r > 0:
                 prev_chars = sorted(sorted_items[idx_r-1][1], key=lambda c: c['x0'])
                 vals = _extract_values_from_chars(prev_chars)
@@ -351,6 +362,11 @@ def _parse_area_row(row_chars, full_text):
     label_match = re.search(r'(?:Net|Gross)\s*Floor\s*Area', full_text, re.IGNORECASE)
     if not label_match:
         return []
+    # Always try regex on full text first — most reliable across all drawing formats
+    vals_regex = re.findall(r'(\d+\.\d+)\s*m', full_text)
+    if vals_regex:
+        return [float(v) for v in vals_regex if 0 < float(v) < 300]
+    # Fallback: char-level grouping after label
     label_len = label_match.end()
     running = ''
     data_chars = []
@@ -359,9 +375,7 @@ def _parse_area_row(row_chars, full_text):
         if len(running) > label_len:
             data_chars.append(c)
     if not data_chars:
-        # fallback: regex on full text
-        vals = re.findall(r'(\d+\.\d+)\s*m', full_text)
-        return [float(v) for v in vals if 0 < float(v) < 300]
+        return []
     groups = []
     current = [data_chars[0]]
     for c in data_chars[1:]:
@@ -781,49 +795,6 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
         if not manifold_loops:
             manifold_loops = [len(loops)]
 
-        # --- Method E: OCR fallback ---
-        # Triggered when loops are missing or suspiciously few given the room count.
-        # Counts rooms from text and compares against loops found.
-        _room_count = len(set(re.findall(r'\b0\d{2}\b', raw_text)))
-        _loops_seem_incomplete = (not loops) or (_room_count > 2 and len(loops) < _room_count)
-        if _loops_seem_incomplete:
-            try:
-                import pdf2image as _pdf2img
-                import pytesseract as _tess
-                from PIL import ImageEnhance as _IE
-                import os as _os
-                # Point to Tesseract on Windows if not on PATH
-                for _tpath in [
-                    r'C:\Program Files\Tesseract-OCR\tesseract.exe',
-                    r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
-                    r'C:\Users\{}\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'.format(
-                        _os.environ.get('USERNAME', '')),
-                ]:
-                    if _os.path.exists(_tpath):
-                        _tess.pytesseract.tesseract_cmd = _tpath
-                        break
-                _pages = _pdf2img.convert_from_path(pdf_path, dpi=600,
-                                                    first_page=page_index+1,
-                                                    last_page=page_index+1)
-                _img = _pages[0]
-                _iw, _ih = _img.size
-                _sc = _iw / w
-                # Crop to top-left quadrant where manifold table typically lives
-                _crop = _img.crop((int(150*_sc), int(40*_sc),
-                                   int(520*_sc), int(240*_sc)))
-                _crop = _IE.Contrast(_crop).enhance(2)
-                _ocr = _tess.image_to_string(_crop, config='--psm 4')
-                # Extract Loop Length row
-                _ll_m = re.search(r'Loop\s*Length\s+([\d\s m]+)', _ocr, re.IGNORECASE)
-                if _ll_m:
-                    _ocr_loops = [int(v) for v in re.findall(r'(\d+)\s*m', _ll_m.group(1))
-                                  if 5 < int(v) < 400]
-                    if len(_ocr_loops) > len(loops):
-                        loops = _ocr_loops
-                        manifold_loops = [len(loops)]
-                        per_manifold_groups = [loops]
-            except Exception:
-                pass
 
         # ---------------------------------------------------------------
         # AREA EXTRACTION
@@ -907,6 +878,88 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
 
         gross_total = round(sum(gross_areas), 1) if gross_areas else None
         net_total = round(sum(net_areas), 1) if net_areas else gross_total
+
+        # --- Method E: OCR fallback ---
+        # Triggered when loops or areas are missing/incomplete.
+        # Scans the FULL page at 300dpi — reliable regardless of table position.
+        _room_count = len(set(re.findall(r'\b0\d{2}\b', raw_text)))
+        _loops_seem_incomplete = (not loops) or (_room_count > 2 and len(loops) < _room_count)
+        _areas_missing = (not gross_total) or (not net_total)
+        if _loops_seem_incomplete or _areas_missing:
+            try:
+                import pdf2image as _pdf2img
+                import pytesseract as _tess
+                from PIL import ImageEnhance as _IE
+                import os as _os
+                # Point to Tesseract on Windows if not on PATH
+                for _tpath in [
+                    r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+                    r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+                    r'C:\Users\{}\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'.format(
+                        _os.environ.get('USERNAME', '')),
+                ]:
+                    if _os.path.exists(_tpath):
+                        _tess.pytesseract.tesseract_cmd = _tpath
+                        break
+
+                # Convert full page at 300dpi — fast enough on a server, reliable anywhere
+                _pages = _pdf2img.convert_from_path(pdf_path, dpi=300,
+                                                    first_page=page_index+1,
+                                                    last_page=page_index+1)
+                _img = _pages[0]
+                _img_enhanced = _IE.Contrast(_img).enhance(2)
+
+                # Single full-page OCR pass — covers all table positions
+                _ocr_full = _tess.image_to_string(_img_enhanced, config='--psm 6')
+
+                # Extract Loop Length row if loops incomplete
+                if _loops_seem_incomplete:
+                    _ll_m = re.search(r'Loop\s*Length\s+([\d\s m]+)', _ocr_full, re.IGNORECASE)
+                    if _ll_m:
+                        _ocr_loops = [int(v) for v in re.findall(r'(\d+)\s*m\b', _ll_m.group(1))
+                                      if 5 < int(v) < 400]
+                        if len(_ocr_loops) > len(loops):
+                            loops = _ocr_loops
+                            manifold_loops = [len(loops)]
+                            per_manifold_groups = [loops]
+                    # Also try per-row format: "001 (ROOM) N NNNmm NNm"
+                    if len(loops) < _room_count:
+                        _pr_matches = re.findall(
+                            r'\d{3}\s*\([^)]+\)\s+\d+\s+\d+\s*mm\s+(\d+)\s*m\b', _ocr_full)
+                        if len(_pr_matches) > len(loops):
+                            _ocr_pr = [int(v) for v in _pr_matches if 5 < int(v) < 400]
+                            if _ocr_pr:
+                                loops = _ocr_pr
+                                manifold_loops = [len(loops)]
+                                per_manifold_groups = [loops]
+
+                # Extract Gross Floor Area if missing
+                if not gross_total:
+                    _gm = re.search(r'Gross\s*Floor\s*Area[\s\S]{0,200}?(\d+\.\d+)', _ocr_full, re.IGNORECASE)
+                    if _gm:
+                        # Get all values on/near the Gross Floor Area line
+                        _g_line_start = _ocr_full.find(_gm.group(0)[:20])
+                        _g_line_end = _ocr_full.find('\n', _g_line_start + 50)
+                        _g_line = _ocr_full[_g_line_start:_g_line_end if _g_line_end > 0 else _g_line_start+200]
+                        _gvals = [float(v) for v in re.findall(r'(\d+\.\d+)', _g_line)
+                                  if 0.5 < float(v) < 500]
+                        if _gvals:
+                            gross_total = round(sum(_gvals), 1)
+
+                # Extract Net Floor Area if missing
+                if not net_total:
+                    _nm = re.search(r'Net\s*Floor\s*Area[\s\S]{0,200}?(\d+\.\d+)', _ocr_full, re.IGNORECASE)
+                    if _nm:
+                        _n_line_start = _ocr_full.find(_nm.group(0)[:20])
+                        _n_line_end = _ocr_full.find('\n', _n_line_start + 50)
+                        _n_line = _ocr_full[_n_line_start:_n_line_end if _n_line_end > 0 else _n_line_start+200]
+                        _nvals = [float(v) for v in re.findall(r'(\d+\.\d+)', _n_line)
+                                  if 0.5 < float(v) < 500]
+                        if _nvals:
+                            net_total = round(sum(_nvals), 1)
+
+            except Exception:
+                pass
 
         # Build warnings list for anything that couldn't be read
         warnings = []
