@@ -1089,41 +1089,66 @@ def detect_units_on_page(raw_text, chars):
 
 
 def scan_pdf_pages(pdf_path):
-    """Scan all pages and return summary info for floor/unit selection."""
+    """Scan all pages - lightweight pass using pypdf (low memory).
+    pdfplumber only used per-floor during extract, not during scan."""
     try:
-        import pdfplumber
+        import gc
+
+        # Use pypdf for the scan — much lower memory than pdfplumber
+        try:
+            from pypdf import PdfReader
+        except ImportError:
+            from PyPDF2 import PdfReader
+
+        reader = PdfReader(pdf_path)
+        num_pages = len(reader.pages)
+        page_texts = []
+        for page in reader.pages:
+            try:
+                raw = decode_cid(page.extract_text() or "")
+            except Exception:
+                raw = ""
+            page_texts.append(raw)
+        del reader
+        gc.collect()
+
         pages = []
-        with pdfplumber.open(pdf_path) as pdf:
-            for i, page in enumerate(pdf.pages):
-                raw = decode_cid(page.extract_text(layout=False, x_tolerance=3, y_tolerance=3) or "")
-                floor_name = get_floor_name(raw) or "Page {}".format(i + 1)
-                mf_count = len(re.findall(r'Heat.{0,5}Required.{0,5}At.{0,5}Manifold', raw, re.IGNORECASE))
-                # Only load chars if needed for unit detection
-                # Unit detection requires chars — but only trigger if text suggests multiple units
-                _may_have_units = bool(re.search(r'\bType\s+\d|\bPlot\s+\d|\bUnit\s+[A-Z0-9]|\bPhase\s+\d', raw, re.IGNORECASE))
-                if _may_have_units:
-                    is_unreadable = len(page.chars) == 0
-                    units, split_x = ([], None) if is_unreadable else detect_units_on_page(raw, page.chars)
-                else:
-                    is_unreadable = not raw.strip()
-                    units, split_x = [], None
-                # For multi-unit pages, extract ref from full page text now (unit X-filtering hides title block)
-                page_ref = ""
-                if units:
-                    try:
-                        full_result = extract_page(pdf_path, i)
-                        page_ref = full_result.get('project_ref', '')
-                    except Exception:
-                        pass
-                pages.append({
-                    "page_index": i,
-                    "floor_name": floor_name,
-                    "num_manifolds": max(1, mf_count),
-                    "unreadable": is_unreadable,
-                    "units": units,
-                    "split_x": split_x,
-                    "project_ref": page_ref,
-                })
+        for i, raw in enumerate(page_texts):
+            floor_name = get_floor_name(raw) or "Page {}".format(i + 1)
+            mf_count = len(re.findall(r'Heat.{0,5}Required.{0,5}At.{0,5}Manifold', raw, re.IGNORECASE))
+            is_unreadable = not raw.strip()
+            # Unit detection only if text hints at multi-unit page
+            _may_have_units = bool(re.search(
+                r'\bType\s+\d|\bPlot\s+\d|\bUnit\s+[A-Z0-9]|\bPhase\s+\d', raw, re.IGNORECASE))
+            units = []
+            split_x = None
+            if _may_have_units and not is_unreadable:
+                try:
+                    import pdfplumber
+                    with pdfplumber.open(pdf_path) as pdf:
+                        page = pdf.pages[i]
+                        units, split_x = detect_units_on_page(raw, page.chars)
+                    gc.collect()
+                except Exception:
+                    pass
+            page_ref = ""
+            if units:
+                try:
+                    full_result = extract_page(pdf_path, i)
+                    page_ref = full_result.get('project_ref', '')
+                    gc.collect()
+                except Exception:
+                    pass
+            pages.append({
+                "page_index":    i,
+                "floor_name":    floor_name,
+                "num_manifolds": max(1, mf_count),
+                "unreadable":    is_unreadable,
+                "units":         units,
+                "split_x":       split_x,
+                "project_ref":   page_ref,
+            })
+
         return {"pages": pages, "total": len(pages)}
     except Exception as e:
         return {"error": str(e)}
