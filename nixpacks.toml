@@ -1,5 +1,8 @@
 [phases.setup]
-nixPkgs = ["python311", "tesseract", "poppler_utils"]
+nixPkgs = ["python312", "python312Packages.pip", "tesseract", "poppler_utils"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
 
 [start]
 cmd = "gunicorn app:app --workers 2 --timeout 120 --bind 0.0.0.0:$PORT"
