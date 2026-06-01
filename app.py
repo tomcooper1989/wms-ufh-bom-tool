@@ -127,6 +127,10 @@ def _handle_pdf_request(endpoint):
                                   unit_label=unit_label,
                                   floor_name_override=floor_name_override,
                                   project_ref_override=project_ref_override)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        result = {'error': str(e)}
     finally:
         try: os.unlink(tmp_path)
         except: pass
