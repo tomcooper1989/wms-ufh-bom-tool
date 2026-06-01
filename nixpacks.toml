@@ -1,0 +1,5 @@
+[phases.setup]
+nixPkgs = ["tesseract", "poppler_utils"]
+
+[start]
+cmd = "gunicorn app:app --workers 2 --timeout 120 --bind 0.0.0.0:$PORT"
