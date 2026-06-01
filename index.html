@@ -244,7 +244,7 @@ table.bom tr:hover td { background: var(--bg); }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-var SERVER = '';
+var SERVER = "http://localhost:5000";
 var panels = {};
 var panelCount = 0;
 var progressMap = {};
@@ -692,15 +692,18 @@ async function spawnFloorPanels(id, file, selected) {
   });
   renderProgress();
 
-  // Fire all extractions in parallel
-  await Promise.all(assignments.map(function(a) {
+  // Fire extractions sequentially — one floor at a time to avoid server overload
+  for (var ai = 0; ai < assignments.length; ai++) {
+    var a = assignments[ai];
     var key = file.name + '::' + a.floor.floor_name + '::p' + a.panelId;
-    return extractPage(a.panelId, file, a.floor.page_index, null, null, null).then(function(){
-      progressMap[key] = 'done'; renderProgress();
-    }).catch(function(){
-      progressMap[key] = 'error'; renderProgress();
-    });
-  }));
+    try {
+      await extractPage(a.panelId, file, a.floor.page_index, null, null, null);
+      progressMap[key] = 'done';
+    } catch(e) {
+      progressMap[key] = 'error';
+    }
+    renderProgress();
+  }
   showFloorLoadedNotice(assignments.length, file.name);
   checkBulkBar();
 }
@@ -717,7 +720,7 @@ function renumberPanels() {
 
 function setStatus(id, msg, type) {
   var s = document.getElementById('status-' + id);
-  if (s) { s.className = 'panel-status ' + type; s.textContent = msg; }
+  if (s) { s.className = 'panel-status ' + type; s.innerHTML = msg; }
 }
 
 function _buildMethodNote(data) {
