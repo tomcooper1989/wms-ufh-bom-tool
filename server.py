@@ -1098,8 +1098,15 @@ def scan_pdf_pages(pdf_path):
                 raw = decode_cid(page.extract_text(layout=False, x_tolerance=3, y_tolerance=3) or "")
                 floor_name = get_floor_name(raw) or "Page {}".format(i + 1)
                 mf_count = len(re.findall(r'Heat.{0,5}Required.{0,5}At.{0,5}Manifold', raw, re.IGNORECASE))
-                is_unreadable = len(page.chars) == 0
-                units, split_x = ([], None) if is_unreadable else detect_units_on_page(raw, page.chars)
+                # Only load chars if needed for unit detection
+                # Unit detection requires chars — but only trigger if text suggests multiple units
+                _may_have_units = bool(re.search(r'\bType\s+\d|\bPlot\s+\d|\bUnit\s+[A-Z0-9]|\bPhase\s+\d', raw, re.IGNORECASE))
+                if _may_have_units:
+                    is_unreadable = len(page.chars) == 0
+                    units, split_x = ([], None) if is_unreadable else detect_units_on_page(raw, page.chars)
+                else:
+                    is_unreadable = not raw.strip()
+                    units, split_x = [], None
                 # For multi-unit pages, extract ref from full page text now (unit X-filtering hides title block)
                 page_ref = ""
                 if units:
