@@ -244,7 +244,7 @@ table.bom tr:hover td { background: var(--bg); }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-var SERVER = '';
+var SERVER = "http://localhost:5000";
 var panels = {};
 var panelCount = 0;
 var progressMap = {};
@@ -333,7 +333,7 @@ function createPanel(file) {
       '<button class="panel-close" onclick="removePanel(' + id + ')">&times;</button>' +
     '</div>' +
     '<div class="panel-body">' +
-      '<div class="panel-status reading" id="status-' + id + '">Reading PDF \u2014 please wait, complex drawings can take up to 20 seconds\u2026</div>' +
+      '<div class="panel-status reading" id="status-' + id + '">Reading PDF \u2014 please wait, multi-floor drawings can take 1-2 minutes per floor\u2026</div>' +
       '<div id="form-' + id + '"></div>' +
     '</div>';
   grid.appendChild(div);
@@ -395,7 +395,10 @@ async function loadPDF(id, file) {
   var fd = new FormData();
   fd.append('pdf', file, file.name);
   try {
-    var res = await fetch(SERVER + '/scan_and_extract', { method: 'POST', body: fd });
+    var controller = new AbortController();
+    var _tout = setTimeout(function(){ controller.abort(); }, 300000);
+    var res = await fetch(SERVER + '/scan_and_extract', { method: 'POST', body: fd, signal: controller.signal });
+    clearTimeout(_tout);
     var scan = await res.json();
     if (scan.error || !scan.pages) {
       // Fallback: try extract directly
@@ -468,7 +471,10 @@ async function extractPage(id, file, pageIndex, unitIndex, splitX, unitLabel, fl
   if (floorNameOverride) fd.append('floor_name_override', floorNameOverride);
   if (projectRefOverride) fd.append('project_ref_override', projectRefOverride);
   try {
-    var res = await fetch(SERVER + '/extract', { method: 'POST', body: fd });
+    var _ectl = new AbortController();
+    var _etout = setTimeout(function(){ _ectl.abort(); }, 300000);
+    var res = await fetch(SERVER + '/extract', { method: 'POST', body: fd, signal: _ectl.signal });
+    clearTimeout(_etout);
     var data = await res.json();
     if (data.unreadable) {
       setStatus(id, '\u2717 Drawing cannot be read \u2014 see message above', 'error');
@@ -596,7 +602,7 @@ async function spawnUnitPanels(id, file, page, selected) {
         '<button class="panel-close" onclick="removePanel(' + newId + ')">&times;</button>' +
       '</div>' +
       '<div class="panel-body">' +
-        '<div class="panel-status reading" id="status-' + newId + '">Reading PDF \u2014 please wait, complex drawings can take up to 20 seconds\u2026</div>' +
+        '<div class="panel-status reading" id="status-' + newId + '">Reading PDF \u2014 please wait, multi-floor drawings can take 1-2 minutes per floor\u2026</div>' +
         '<div id="form-' + newId + '"></div>' +
       '</div>';
     if (insertAfter && insertAfter.parentNode === grid) {
@@ -665,7 +671,7 @@ async function spawnFloorPanels(id, file, selected) {
         '<button class="panel-close" onclick="removePanel(' + newId + ')">&times;</button>' +
       '</div>' +
       '<div class="panel-body">' +
-        '<div class="panel-status reading" id="status-' + newId + '">Reading PDF \u2014 please wait, complex drawings can take up to 20 seconds\u2026</div>' +
+        '<div class="panel-status reading" id="status-' + newId + '">Reading PDF \u2014 please wait, multi-floor drawings can take 1-2 minutes per floor\u2026</div>' +
         '<div id="form-' + newId + '"></div>' +
       '</div>';
     // Always insert after the previous floor of this same drawing
