@@ -244,7 +244,7 @@ table.bom tr:hover td { background: var(--bg); }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-var SERVER = '';  // relative URL — works locally and on Railway
+var SERVER = "http://localhost:5000";
 var panels = {};
 var panelCount = 0;
 var progressMap = {};
@@ -415,10 +415,11 @@ async function loadPDF(id, file) {
       } else if (pg.units && pg.units.length >= 2) {
         setProgressFile(file.name, 'done');
         showUnitPicker(id, file, pg);
-      } else if (scan.extract) {
+        } else if (scan.extract) {
         // Single page, non-unit — extract data already bundled, apply directly
         setProgressFile(file.name, 'done');
         var data = scan.extract;
+        var _methodNote = _buildMethodNote(data);
         if (data.unreadable) {
           setStatus(id, '\u2717 Drawing cannot be read \u2014 see message above', 'error');
           setProgressFile(file.name, 'error');
@@ -429,7 +430,7 @@ async function loadPDF(id, file) {
             '<p style="color:#991b1b;font-size:13px;font-weight:600;margin:0;">&#8593; See the message at the top of the page for details.</p>' +
             '</div>';
         } else if (data.warnings && data.warnings.length > 0) {
-          setStatus(id, '\u26a0 Auto-filled with issues \u2014 check warnings below', 'warn');
+          setStatus(id, '\u26a0 Auto-filled with issues \u2014 check warnings below' + _methodNote, 'warn');
           var warnHtml = '<div style="margin-top:0.6rem;background:#fef3c7;border:2px solid #f59e0b;border-radius:var(--radius);padding:0.75rem 1rem;">' +
             '<p style="font-size:12px;font-weight:700;color:#92400e;margin:0 0 0.4rem;">&#9888; Issues found \u2014 check before generating BOM:</p><ul style="margin:0;padding-left:1.2rem;">' +
             data.warnings.map(function(w){ return '<li style="font-size:12px;color:#92400e;margin-bottom:2px;">' + w + '</li>'; }).join('') +
@@ -439,7 +440,7 @@ async function loadPDF(id, file) {
           addTopIssue(file.name, data.floor_name, data.warnings);
           applyData(id, data);
         } else {
-          setStatus(id, '\u2713 Auto-filled from PDF \u2014 check before generating', 'ok');
+          setStatus(id, '\u2713 Auto-filled from PDF \u2014 check before generating' + _methodNote, 'ok');
           applyData(id, data);
         }
       } else {
@@ -494,7 +495,7 @@ async function extractPage(id, file, pageIndex, unitIndex, splitX, unitLabel, fl
       // Accumulate in top issues banner
       addTopIssue(file.name, data.floor_name, data.warnings);
     } else {
-      setStatus(id, '\u2713 Auto-filled from PDF \u2014 check before generating', 'ok');
+      setStatus(id, '\u2713 Auto-filled from PDF \u2014 check before generating' + _buildMethodNote(data), 'ok');
       setProgressFile(file.name, 'done');
     }
     applyData(id, data);
@@ -712,6 +713,21 @@ function setStatus(id, msg, type) {
   var s = document.getElementById('status-' + id);
   if (s) { s.className = 'panel-status ' + type; s.textContent = msg; }
 }
+
+function _buildMethodNote(data) {
+  if (!data || !data.read_methods) return '';
+  var lm = data.read_methods.loops || '';
+  var am = data.read_methods.areas || '';
+  var parts = [];
+  if (lm) parts.push('loops: ' + lm);
+  if (am) parts.push('areas: ' + am);
+  if (!parts.length) return '';
+  var hasOCR = (lm.indexOf('OCR') > -1 || am.indexOf('OCR') > -1);
+  var colour = hasOCR ? '#b45309' : '#6b7280';
+  return ' <span style="font-size:11px;color:' + colour + ';font-weight:400;margin-left:6px;opacity:0.85;">' +
+    'read method: ' + parts.join(', ') + '</span>';
+}
+
 
 function applyData(id, data) {
   var p = panels[id];
