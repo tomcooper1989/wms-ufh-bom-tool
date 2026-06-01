@@ -788,6 +788,7 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
         per_manifold_groups = best_groups
         loops = [l for g in per_manifold_groups for l in g]
         manifold_loops = [len(g) for g in per_manifold_groups]
+        _loop_method = best_source if loops else 'none'
 
         # Reconcile manifold count
         if len(per_manifold_groups) > num_manifolds:
@@ -885,6 +886,7 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
         _room_count = len(set(re.findall(r'\b0\d{2}\b', raw_text)))
         _loops_seem_incomplete = (not loops) or (_room_count > 2 and len(loops) < _room_count)
         _areas_missing = (not gross_total) or (not net_total)
+        _area_method = 'none' if _areas_missing else 'text'
         if _loops_seem_incomplete or _areas_missing:
             try:
                 import pdf2image as _pdf2img
@@ -922,6 +924,7 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
                             loops = _ocr_loops
                             manifold_loops = [len(loops)]
                             per_manifold_groups = [loops]
+                            _loop_method = 'E (OCR)'
                     # Also try per-row format: "001 (ROOM) N NNNmm NNm"
                     if len(loops) < _room_count:
                         _pr_matches = re.findall(
@@ -932,12 +935,13 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
                                 loops = _ocr_pr
                                 manifold_loops = [len(loops)]
                                 per_manifold_groups = [loops]
+                                _loop_method = 'E (OCR)'
 
                 # Extract Gross Floor Area if missing
+                _area_method = 'E (OCR)' if _areas_missing else 'text'
                 if not gross_total:
                     _gm = re.search(r'Gross\s*Floor\s*Area[\s\S]{0,200}?(\d+\.\d+)', _ocr_full, re.IGNORECASE)
                     if _gm:
-                        # Get all values on/near the Gross Floor Area line
                         _g_line_start = _ocr_full.find(_gm.group(0)[:20])
                         _g_line_end = _ocr_full.find('\n', _g_line_start + 50)
                         _g_line = _ocr_full[_g_line_start:_g_line_end if _g_line_end > 0 else _g_line_start+200]
@@ -995,6 +999,10 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
             "net_area":       net_total,
             "unit_label":     unit_label,
             "warnings":       warnings,
+            "read_methods": {
+                "loops": _loop_method,
+                "areas": _area_method,
+            },
         }
 
     except Exception as e:
