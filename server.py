@@ -271,9 +271,6 @@ SYSTEM_ROW_MAP = {
 def detect_system_from_row(raw_text):
     """Check for System row in manifold table - fastest method for new drawings."""
     for line in raw_text.split('\n'):
-        if re.search(r'System', line, re.IGNORECASE):
-            print(f"DEBUG system line: {repr(line)}")
-    for line in raw_text.split('\n'):
         if re.match(r'\s*System\s+', line, re.IGNORECASE):
             line_lower = line.lower()
             for key, system in SYSTEM_ROW_MAP.items():
@@ -290,9 +287,7 @@ def detect_system(raw_text, pdf_path, page_index):
     text_lower = raw_text.lower()
     for keyword, system in SYSTEM_MAP:
         if keyword in text_lower:
-            print(f"DEBUG keyword match: {repr(keyword)} -> {system}")
             return system
-    print(f"DEBUG detect_system: no match found on page {page_index}")
     return None
 
 
@@ -584,8 +579,10 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
         mf_count_names = len(set(mf_names))
         num_manifolds = max(1, mf_count_heat, mf_count_names)
 
-        # System type
+        # System type — try raw_text first, then chars_text (catches CID-encoded system rows)
         system_type = detect_system(raw_text, pdf_path, page_index)
+        if not system_type:
+            system_type = detect_system(_chars_text, pdf_path, page_index)
 
         # Pipe size
         pipe_size = "16mm"
