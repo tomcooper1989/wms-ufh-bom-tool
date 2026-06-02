@@ -271,6 +271,9 @@ SYSTEM_ROW_MAP = {
 def detect_system_from_row(raw_text):
     """Check for System row in manifold table - fastest method for new drawings."""
     for line in raw_text.split('\n'):
+        if re.search(r'System', line, re.IGNORECASE):
+            print(f"DEBUG system line: {repr(line)}")
+    for line in raw_text.split('\n'):
         if re.match(r'\s*System\s+', line, re.IGNORECASE):
             line_lower = line.lower()
             for key, system in SYSTEM_ROW_MAP.items():
@@ -281,15 +284,15 @@ def detect_system_from_row(raw_text):
 
 def detect_system(raw_text, pdf_path, page_index):
     """Detect system type — checks System row first, then full text keyword scan."""
-    # Method 1: System row in manifold table (new drawings)
     system = detect_system_from_row(raw_text)
     if system:
         return system
-    # Method 2: keyword scan of full raw text (legacy drawings)
     text_lower = raw_text.lower()
     for keyword, system in SYSTEM_MAP:
         if keyword in text_lower:
+            print(f"DEBUG keyword match: {repr(keyword)} -> {system}")
             return system
+    print(f"DEBUG detect_system: no match found on page {page_index}")
     return None
 
 
