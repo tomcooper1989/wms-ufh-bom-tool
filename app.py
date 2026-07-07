@@ -4,7 +4,7 @@ Deployed on Railway. Users access via browser, no local install needed.
 """
 
 from flask import Flask, request, jsonify, send_from_directory, redirect, session
-import os, tempfile, functools, json, datetime
+import os, tempfile, functools, json, datetime, re
 
 # Import all extraction logic from server.py
 from server import scan_pdf_pages, scan_and_extract, extract_page
@@ -19,7 +19,9 @@ ACCESS_PASSWORD = os.environ.get('ACCESS_PASSWORD', '')
 DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD', 'wms-admin')
 
 # Log file path — persists on Railway volume if configured, otherwise ephemeral
-LOG_FILE = os.environ.get('LOG_FILE', '/tmp/bom_usage.json')
+LOG_FILE = os.environ.get('LOG_FILE', '/data/bom_usage.json')
+FAILURES_DIR = os.environ.get('FAILURES_DIR', '/data/bom_failures')
+os.makedirs(FAILURES_DIR, exist_ok=True)
 
 
 # ---------------------------------------------------------------
@@ -117,6 +119,53 @@ def log_bom():
         return jsonify({'ok': True})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
+
+
+@app.route('/log_failure', methods=['POST'])
+@login_required
+def log_failure():
+    """Called when a PDF completely fails to read — saves the file and logs the event."""
+    try:
+        user = request.form.get('user', '').strip()[:80]
+        filename = request.form.get('filename', 'unknown.pdf').strip()[:120]
+        reason = request.form.get('reason', '').strip()[:200]
+        failure_type = request.form.get('failure_type', 'complete').strip()[:20]
+        ts = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        safe_name = re.sub(r'[^\w\.\-]', '_', filename)
+        save_name = f'{ts}_{safe_name}'
+        saved_path = None
+        if 'pdf' in request.files:
+            pdf_file = request.files['pdf']
+            saved_path = os.path.join(FAILURES_DIR, save_name)
+            pdf_file.save(saved_path)
+        entry = {
+            'ts': datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+            'user': user,
+            'filename': filename,
+            'reason': reason,
+            'failure_type': failure_type,
+            'saved_as': save_name if saved_path else None,
+            'type': 'failure',
+        }
+        entries = load_log()
+        entries.append(entry)
+        save_log(entries)
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+
+
+@app.route('/download_failure/<filename>', methods=['POST'])
+def download_failure(filename):
+    """Download a saved failure PDF — protected by dashboard password."""
+    try:
+        data = request.get_json(force=True) or {}
+        if data.get('password') != DASHBOARD_PASSWORD:
+            return jsonify({'error': 'wrong password'}), 403
+        safe = re.sub(r'[^\w\.\-]', '_', filename)
+        return send_from_directory(FAILURES_DIR, safe, as_attachment=True)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/dashboard_data', methods=['POST'])
