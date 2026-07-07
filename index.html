@@ -21,9 +21,20 @@ header { background: var(--surface); border-bottom: 1px solid var(--border); pad
 .spacer { flex: 1; }
 .btn-clear-all { font-size: 12px; color: var(--text-muted); background: none; border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 5px 14px; cursor: pointer; display: none; }
 .btn-clear-all:hover { background: var(--danger-bg); color: var(--danger); border-color: #fca5a5; }
+.btn-settings { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 18px; padding: 4px 6px; border-radius: var(--radius); transition: background 0.15s; }
+.btn-settings:hover { background: var(--bg); color: var(--text); }
 .container { max-width: 1600px; margin: 0 auto; padding: 2rem 1.5rem; }
 h1 { font-size: 22px; font-weight: 600; margin-bottom: 0.25rem; letter-spacing: -0.02em; }
 .page-sub { color: var(--text-muted); font-size: 13px; margin-bottom: 1.5rem; }
+
+/* Name field */
+.name-bar { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem 1.25rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.name-bar label { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.name-bar input { height: 36px; border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 0 10px; font-size: 13px; color: var(--text); background: var(--surface); outline: none; width: 220px; transition: border-color 0.15s; }
+.name-bar input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(29,78,216,0.1); }
+.name-bar input.invalid { border-color: var(--danger); box-shadow: 0 0 0 2px rgba(220,38,38,0.1); }
+.name-bar .name-hint { font-size: 12px; color: var(--text-muted); }
+
 .upload-zone { border: 2px dashed var(--border-strong); border-radius: var(--radius-lg); padding: 2.5rem 2rem; text-align: center; transition: all 0.2s; background: var(--surface); margin-bottom: 1.25rem; }
 .upload-zone.drag-over { border-color: var(--accent); background: var(--accent-bg); }
 .upload-icon { font-size: 36px; margin-bottom: 0.5rem; }
@@ -102,6 +113,35 @@ table.bom tr:hover td { background: var(--bg); }
 .combined-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem; }
 .combined-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
 .combined-sub { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+/* Dashboard modal */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 100; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal-box { background: var(--surface); border-radius: var(--radius-lg); box-shadow: 0 8px 40px rgba(0,0,0,0.18); width: min(95vw, 860px); max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; }
+.modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.modal-title { font-size: 15px; font-weight: 700; }
+.modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--text-muted); }
+.modal-close:hover { color: var(--danger); }
+.modal-body { padding: 1.25rem; overflow-y: auto; flex: 1; }
+.dash-login { display: flex; flex-direction: column; gap: 0.75rem; max-width: 280px; }
+.dash-login input { height: 38px; border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 0 10px; font-size: 13px; }
+.dash-login button { height: 38px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius); font-size: 13px; font-weight: 600; cursor: pointer; }
+.dash-error { color: var(--danger); font-size: 12px; }
+.dash-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 1.25rem; }
+.dash-stat { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.875rem 1rem; }
+.dash-stat-val { font-size: 26px; font-weight: 700; color: var(--accent); line-height: 1; }
+.dash-stat-lbl { font-size: 11px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+.dash-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dash-table th { text-align: left; padding: 6px 8px; border-bottom: 2px solid var(--border-strong); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.dash-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.dash-table tr:last-child td { border-bottom: none; }
+.dash-table tr:hover td { background: var(--bg); }
+.dash-actions { display: flex; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; }
+.dash-btn { background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 5px 12px; font-size: 12px; cursor: pointer; color: var(--text); }
+.dash-btn:hover { background: var(--bg); }
+.dash-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.user-pill { display: inline-block; background: var(--accent-bg); color: var(--accent); border-radius: 99px; padding: 2px 8px; font-size: 11px; font-weight: 600; }
+
 @media (max-width: 800px) {
   .drawings-grid.cols-2, .drawings-grid.cols-3, .drawings-grid.cols-4 { grid-template-columns: 1fr; }
 }
@@ -111,10 +151,30 @@ table.bom tr:hover td { background: var(--bg); }
 
 <header>
   <div class="logo">WMS <span>UFH</span> BOM Generator</div>
-  <div class="badge">v1.3</div>
+  <div class="badge">v1.4</div>
   <div class="spacer"></div>
   <button class="btn-clear-all" id="btnClearAll" onclick="clearAll()">Clear all</button>
+  <button class="btn-settings" title="Settings" onclick="openDashboard()">⚙</button>
 </header>
+
+<!-- Dashboard modal -->
+<div class="modal-overlay" id="dashModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Usage Dashboard</span>
+      <button class="modal-close" onclick="closeDashboard()">&times;</button>
+    </div>
+    <div class="modal-body" id="dashBody">
+      <div class="dash-login" id="dashLogin">
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:0.25rem;">Enter dashboard password</p>
+        <input type="password" id="dashPwInput" placeholder="Password" onkeydown="if(event.key==='Enter')loadDashboard()" />
+        <button onclick="loadDashboard()">View dashboard</button>
+        <span class="dash-error" id="dashErr" style="display:none;">Incorrect password</span>
+      </div>
+      <div id="dashContent" style="display:none;"></div>
+    </div>
+  </div>
+</div>
 
 <div id="topWarningBanner" style="display:none;background:#dc2626;padding:1rem 2rem;border-bottom:4px solid #7f1d1d;">
   <p style="color:#fff;font-weight:900;font-size:15px;text-transform:uppercase;letter-spacing:0.07em;margin:0 0 0.5rem;">&#9888;&nbsp;&nbsp;SORRY &mdash; THIS DRAWING CANNOT BE READ AUTOMATICALLY</p>
@@ -131,6 +191,13 @@ table.bom tr:hover td { background: var(--bg); }
 
 <div class="container">
   <p class="page-sub">Drop any number of WMS drawing PDFs — each gets its own picking list</p>
+
+  <!-- Name field -->
+  <div class="name-bar">
+    <label for="userNameInput">Your name:</label>
+    <input type="text" id="userNameInput" placeholder="e.g. Sarah Jones" autocomplete="name" />
+    <span class="name-hint">Required before generating a BOM</span>
+  </div>
 
   <div class="upload-zone" id="uploadZone">
     <div class="upload-icon">&#128196;</div>
@@ -250,6 +317,110 @@ var panelCount = 0;
 var progressMap = {};
 var progressTotal = 0;
 
+// ── Dashboard ──
+function openDashboard() {
+  document.getElementById('dashModal').classList.add('open');
+  document.getElementById('dashPwInput').focus();
+}
+function closeDashboard() {
+  document.getElementById('dashModal').classList.remove('open');
+}
+document.getElementById('dashModal').addEventListener('click', function(e){
+  if(e.target === this) closeDashboard();
+});
+
+async function loadDashboard() {
+  var pw = document.getElementById('dashPwInput').value;
+  var err = document.getElementById('dashErr');
+  err.style.display = 'none';
+  try {
+    var res = await fetch('/dashboard_data', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({password: pw})
+    });
+    if(res.status === 403) { err.style.display = 'block'; return; }
+    var data = await res.json();
+    if(data.error) { err.style.display = 'block'; return; }
+    renderDashboard(data.entries || []);
+    document.getElementById('dashLogin').style.display = 'none';
+    document.getElementById('dashContent').style.display = 'block';
+  } catch(e) {
+    err.textContent = 'Could not connect to server';
+    err.style.display = 'block';
+  }
+}
+
+function renderDashboard(entries) {
+  // Summary stats
+  var totalBoms = entries.length;
+  var userCounts = {};
+  entries.forEach(function(e) {
+    var u = e.user || 'Unknown';
+    userCounts[u] = (userCounts[u] || 0) + 1;
+  });
+  var uniqueUsers = Object.keys(userCounts).length;
+  var today = new Date().toISOString().slice(0,10);
+  var todayCount = entries.filter(function(e){ return e.ts && e.ts.startsWith(today); }).length;
+
+  // User summary rows sorted by count desc
+  var userRows = Object.entries(userCounts).sort(function(a,b){ return b[1]-a[1]; });
+
+  var html = '<div class="dash-stats">' +
+    '<div class="dash-stat"><div class="dash-stat-val">' + totalBoms + '</div><div class="dash-stat-lbl">Total BOMs generated</div></div>' +
+    '<div class="dash-stat"><div class="dash-stat-val">' + uniqueUsers + '</div><div class="dash-stat-lbl">Unique users</div></div>' +
+    '<div class="dash-stat"><div class="dash-stat-val">' + todayCount + '</div><div class="dash-stat-lbl">Generated today</div></div>' +
+    '</div>';
+
+  html += '<div class="dash-actions">' +
+    '<button class="dash-btn primary" onclick="exportDashCSV()">&#8595; Export CSV</button>' +
+    '<button class="dash-btn" onclick="document.getElementById(\'dashLogin\').style.display=\'flex\';document.getElementById(\'dashContent\').style.display=\'none\';">&#8592; Back</button>' +
+    '</div>';
+
+  html += '<p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:0.5rem;">By user</p>';
+  html += '<table class="dash-table" style="margin-bottom:1.25rem;"><thead><tr><th>Name</th><th style="text-align:right;">BOMs generated</th></tr></thead><tbody>';
+  userRows.forEach(function(r){
+    html += '<tr><td><span class="user-pill">' + r[0] + '</span></td><td style="text-align:right;font-weight:700;">' + r[1] + '</td></tr>';
+  });
+  html += '</tbody></table>';
+
+  html += '<p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:0.5rem;">All activity (newest first)</p>';
+  html += '<table class="dash-table"><thead><tr><th>Date / Time (UTC)</th><th>User</th><th>Project ref</th><th>Floor</th><th>System</th></tr></thead><tbody>';
+  var sorted = entries.slice().reverse();
+  sorted.forEach(function(e){
+    html += '<tr><td>' + (e.ts||'') + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td>' + (e.project_ref||'') + '</td><td>' + (e.floor||'') + '</td><td>' + (e.system||'') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+
+  window._dashEntries = entries;
+  document.getElementById('dashContent').innerHTML = html;
+}
+
+function exportDashCSV() {
+  var entries = window._dashEntries || [];
+  var rows = [['Date/Time (UTC)','User','Project Ref','Floor','System']].concat(
+    entries.map(function(e){ return [e.ts||'', e.user||'', e.project_ref||'', e.floor||'', e.system||'']; })
+  );
+  var csv = rows.map(function(r){ return r.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
+  var blob = new Blob([csv], {type:'text/csv'});
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'WMS_BOM_Usage.csv'; a.click();
+}
+
+// ── Usage logging ──
+function getCurrentUser() {
+  return (document.getElementById('userNameInput').value || '').trim();
+}
+
+function logBOM(projectRef, floorName, systemType) {
+  var user = getCurrentUser();
+  fetch('/log_bom', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({user: user, project_ref: projectRef, floor: floorName, system: systemType})
+  }).catch(function(){});
+}
+
+// ── Upload handling ──
 var zone = document.getElementById('uploadZone');
 zone.addEventListener('dragenter', function(e){ e.preventDefault(); e.stopPropagation(); zone.classList.add('drag-over'); });
 zone.addEventListener('dragover',  function(e){ e.preventDefault(); e.stopPropagation(); zone.classList.add('drag-over'); });
@@ -293,7 +464,7 @@ function setProgressFile(name, status) {
 function renderProgress() {
   var entries = Object.entries(progressMap);
   var done = entries.filter(function(e){ return e[1] === 'done' || e[1] === 'error'; }).length;
-  var total = entries.length; // use actual map size, not initial count
+  var total = entries.length;
   var pct = total > 0 ? Math.round((done / total) * 100) : 0;
   var allDone = done === total && total > 0;
   document.getElementById('progressFill').style.width = pct + '%';
@@ -401,12 +572,10 @@ async function loadPDF(id, file) {
     clearTimeout(_tout);
     var scan = await res.json();
     if (scan.error || !scan.pages) {
-      // Fallback: try extract directly
       await extractPage(id, file, 0);
     } else if (scan.total === 1) {
       var pg = scan.pages[0];
       if (pg.unreadable) {
-        // Unreadable — show warning immediately without a second round trip
         setStatus(id, '\u2717 Drawing cannot be read \u2014 see message above', 'error');
         setProgressFile(file.name, 'error');
         document.getElementById('topWarningBanner').style.display = 'block';
@@ -418,8 +587,7 @@ async function loadPDF(id, file) {
       } else if (pg.units && pg.units.length >= 2) {
         setProgressFile(file.name, 'done');
         showUnitPicker(id, file, pg);
-        } else if (scan.extract) {
-        // Single page, non-unit — extract data already bundled, apply directly
+      } else if (scan.extract) {
         setProgressFile(file.name, 'done');
         var data = scan.extract;
         var _methodNote = _buildMethodNote(data);
@@ -450,7 +618,6 @@ async function loadPDF(id, file) {
         await extractPage(id, file, 0);
       }
     } else {
-      // Multi-page — show floor picker as before
       setProgressFile(file.name, 'done');
       showFloorPicker(id, file, scan.pages);
     }
@@ -490,7 +657,6 @@ async function extractPage(id, file, pageIndex, unitIndex, splitX, unitLabel, fl
     if (data.warnings && data.warnings.length > 0) {
       setStatus(id, '\u26a0 Auto-filled with issues \u2014 check warnings below', 'warn');
       setProgressFile(file.name, 'error');
-      // Show warnings on the panel
       var warnHtml = '<div style="margin-top:0.6rem;background:#fef3c7;border:2px solid #f59e0b;border-radius:var(--radius);padding:0.75rem 1rem;">' +
         '<p style="font-size:12px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.4rem;">\u26a0 Could not read the following \u2014 please enter manually:</p>' +
         '<ul style="margin:0;padding-left:1.2rem;">' +
@@ -498,7 +664,6 @@ async function extractPage(id, file, pageIndex, unitIndex, splitX, unitLabel, fl
         '</ul></div>';
       var formEl = document.getElementById('form-' + id);
       if (formEl) formEl.insertAdjacentHTML('afterbegin', warnHtml);
-      // Accumulate in top issues banner
       addTopIssue(file.name, data.floor_name, data.warnings);
     } else {
       setStatus(id, '\u2713 Auto-filled from PDF \u2014 check before generating' + _buildMethodNote(data), 'ok');
@@ -513,7 +678,6 @@ async function extractPage(id, file, pageIndex, unitIndex, splitX, unitLabel, fl
 }
 
 function showFloorPicker(id, file, pages) {
-  // Store in global so onclick handlers can reliably access
   window._floorPicker = window._floorPicker || {};
   window._floorPicker[id] = { file: file, pages: pages };
   setStatus(id, '✓ Multi-floor drawing — select floors below', 'ok');
@@ -537,7 +701,6 @@ function showFloorPicker(id, file, pages) {
   var formEl = document.getElementById('form-' + id);
   if (formEl) formEl.innerHTML = html;
 }
-
 
 function showUnitPicker(id, file, page) {
   window._unitPicker = window._unitPicker || {};
@@ -602,7 +765,7 @@ async function spawnUnitPanels(id, file, page, selected) {
         '<button class="panel-close" onclick="removePanel(' + newId + ')">&times;</button>' +
       '</div>' +
       '<div class="panel-body">' +
-        '<div class="panel-status reading" id="status-' + newId + '">Reading PDF \u2014 please wait, multi-floor drawings can take 1-2 minutes per floor\u2026</div>' +
+        '<div class="panel-status reading" id="status-' + newId + '">Reading PDF\u2026</div>' +
         '<div id="form-' + newId + '"></div>' +
       '</div>';
     if (insertAfter && insertAfter.parentNode === grid) {
@@ -627,7 +790,6 @@ async function spawnUnitPanels(id, file, page, selected) {
       progressMap[key] = 'error'; renderProgress();
     });
   }));
-  showFloorLoadedNotice(assignments.length, file.name);
   checkBulkBar();
 }
 
@@ -652,10 +814,8 @@ async function loadAllFloorsBtn(id) {
 }
 
 async function spawnFloorPanels(id, file, selected) {
-  // Create all panels first, then fire extractions in parallel
   var assignments = [{ panelId: id, floor: selected[0] }];
   var grid = document.getElementById('drawingsGrid');
-  // Track insertion point — start after the panel for floor 1 (panel 'id')
   var insertAfter = document.getElementById('panel-' + id);
   for (var i = 1; i < selected.length; i++) {
     var fl = selected[i];
@@ -671,28 +831,23 @@ async function spawnFloorPanels(id, file, selected) {
         '<button class="panel-close" onclick="removePanel(' + newId + ')">&times;</button>' +
       '</div>' +
       '<div class="panel-body">' +
-        '<div class="panel-status reading" id="status-' + newId + '">Reading PDF \u2014 please wait, multi-floor drawings can take 1-2 minutes per floor\u2026</div>' +
+        '<div class="panel-status reading" id="status-' + newId + '">Reading PDF\u2026</div>' +
         '<div id="form-' + newId + '"></div>' +
       '</div>';
-    // Always insert after the previous floor of this same drawing
     if (insertAfter && insertAfter.parentNode === grid) {
       grid.insertBefore(div, insertAfter.nextSibling);
     } else {
       grid.appendChild(div);
     }
-    insertAfter = div; // next floor goes after this one
+    insertAfter = div;
     assignments.push({ panelId: newId, floor: fl });
   }
   updateGrid();
-  // Fire all page extractions in parallel - all floors load simultaneously
-  // Register floors in progressMap so bulk bar waits for all of them
   assignments.forEach(function(a) {
     var key = file.name + '::' + a.floor.floor_name + '::p' + a.panelId;
     progressMap[key] = 'reading';
   });
   renderProgress();
-
-  // Fire extractions sequentially — one floor at a time to avoid server overload
   for (var ai = 0; ai < assignments.length; ai++) {
     var a = assignments[ai];
     var key = file.name + '::' + a.floor.floor_name + '::p' + a.panelId;
@@ -704,10 +859,8 @@ async function spawnFloorPanels(id, file, selected) {
     }
     renderProgress();
   }
-  showFloorLoadedNotice(assignments.length, file.name);
   checkBulkBar();
 }
-
 
 function renumberPanels() {
   var grid = document.getElementById('drawingsGrid');
@@ -737,12 +890,10 @@ function _buildMethodNote(data) {
     'read method: ' + parts.join(', ') + '</span>';
 }
 
-
 function applyData(id, data) {
   var p = panels[id];
   if (!p) return;
   if (data.system_type) p.system_type = data.system_type;
-  // Update panel header with drawing title
   if (data.drawing_title || data.project_ref) {
     var title = (data.project_ref ? data.project_ref + ' – ' : '') + (data.drawing_title || data.floor_name || '');
     var fnEl = document.getElementById('panel-' + id);
@@ -751,10 +902,14 @@ function applyData(id, data) {
       if (fnSpan && title) fnSpan.textContent = title;
     }
   }
+  // Store floor name and project ref on panel for logging
+  if (data.floor_name) p.floor_name = data.floor_name;
+  if (data.project_ref) p.project_ref = data.project_ref;
+
   if (data.loops && data.loops.length > 0)
     p.loops = data.loops.map(function(l, i){ return {id: i+1, len: l}; });
   if (data.num_manifolds) {
-    p.manifoldLoops = data.manifold_loops || [p.loops.length];
+    p.manifoldLoops = data.manifest_loops || data.manifold_loops || [p.loops.length];
     while (p.manifoldLoops.length < data.num_manifolds) p.manifoldLoops.push(1);
     p.manifoldLoops = p.manifoldLoops.slice(0, data.num_manifolds);
   }
@@ -851,7 +1006,6 @@ function renderLoops(id) {
         '<button class="btn-rm" onclick="removeLoop(' + id + ',' + l.id + ')">&times;</button></div>';
     }
   }
-  // Any remaining loops not assigned to a manifold
   while (loopIdx < p.loops.length) {
     var l = p.loops[loopIdx];
     var i = loopIdx;
@@ -942,12 +1096,10 @@ function toggleSys2(id) {
   var btn = document.getElementById('btn-addsys2-' + id);
   if (!el) return;
   if (p.sys2) {
-    // Remove second system
     p.sys2 = null;
     el.innerHTML = '';
     btn.textContent = '+ Add second system type';
   } else {
-    // Add second system
     p.sys2 = { system_type: '', gross: '', net: '', loops: [{id:1,len:''}], manifoldLoops: [1], answers: {} };
     btn.textContent = '- Remove second system';
     renderSys2(id);
@@ -1088,7 +1240,6 @@ function qb2(id, key, q, opts) {
   return '<div class="q-card"><p>' + q + '</p><div class="q-opts">' + btns + '</div></div>';
 }
 
-
 function calcBOM(id, src, isSys2) {
   var bom = [];
   var gross = parseFloat(isSys2 ? src.gross : document.getElementById('gross-'+id).value) || 0;
@@ -1101,7 +1252,6 @@ function calcBOM(id, src, isSys2) {
   var tm=ll.reduce(function(a,b){return a+b*1.1;},0);
   var nMf=src.manifoldLoops.length;
   var totMfL=src.manifoldLoops.reduce(function(a,b){return a+b;},0);
-  var bom=[];
 
   function dpm(){var a=src.answers.dpm;if(a==='Separating Layer only'||a==='Both DPM and Separating Layer')bom.push({pr:'Separating Layer',c:'46699',s:'DPM Black 500 Gauge (200m\u00b2 per Roll)',q:1});if(a==='DPM only'||a==='Both DPM and Separating Layer')bom.push({pr:'DPM 1200 Gauge',c:'46701',s:'DPM Black 1200 Gauge (100m\u00b2 per Roll)',q:ceil(gross,80)});}
   function mfs(sz){src.manifoldLoops.forEach(function(lps,i){var m=mfc(lps,sz);bom.push({pr:'Manifold'+(nMf>1?' (M'+(i+1)+')':''),c:m.code,s:m.desc,q:1});});}
@@ -1152,17 +1302,13 @@ function generateBOM(id) {
   if(gross<=0){out.innerHTML=er('Please enter a gross floor area.');return;}
   var ll=p.loops.map(function(l){return parseFloat(l.len);}).filter(function(v){return !isNaN(v)&&v>0;});
   if(!ll.length){out.innerHTML=er('Please enter at least one loop length.');return;}
-  // Set system_type on panel so calcBOM can read it via src.system_type
-  p.system_type = sys;
   if(['AmbiTak','AmbiDuoClip','AmbiCastellated','AmbiSolo'].indexOf(sys)>-1&&!p.answers.dpm){out.innerHTML=er('Please answer the DPM question.');return;}
   if(sys==='AmbiTak'&&!p.answers.clips){out.innerHTML=er('Please select clip size.');return;}
   if(sys==='AmbiCastellated'&&!p.answers.cast){out.innerHTML=er('Please answer the overfloor question.');return;}
   if((sys==='AmbiDeck20'||sys==='AmbiDeck18')&&!p.answers.sub){out.innerHTML=er('Please select subfloor type.');return;}
   if(['AmbiTak','AmbiDuoClip','AmbiClip','AmbiCastellated'].indexOf(sys)>-1&&!p.answers.insulation){out.innerHTML=er('Please answer the insulation question.');return;}
 
-  // Run BOM calculation via shared calcBOM function
   var bom = calcBOM(id, p, false);
-
 
   var names={AmbiTak:'AmbiTak (Tacker)',AmbiClip:'AmbiClip / Cliprail',AmbiDuoClip:'AmbiDuoClip',AmbiPlate:'AmbiPlate Pipe',AmbiLoFloor:'AmbiLoFloor',AmbiJoFloor:'AmbiJoFloor',OverDeck20:'OverDeck 20',AmbiDeck20:'AmbiDeck 20 Pro',AmbiDeck18:'AmbiDeck 18',AmbiCastellated:'AmbiCastellated',AmbiSolo:'AmbiSolo',AmbiFloat10:'AmbiFloat 10'};
   var conNote=((sys==='AmbiDeck20'||sys==='AmbiDeck18')&&p.answers.sub==='Concrete')?'<div class="info-box">Note: AmbiBond included \u2014 concrete subfloor selected.</div>':'';
@@ -1170,7 +1316,6 @@ function generateBOM(id) {
 
   p.bom=bom; p.ref=ref||p.filename;
 
-  // Process second system if present
   var bom2 = [];
   var sys2html = '';
   if (p.sys2 && p.sys2.system_type) {
@@ -1186,12 +1331,14 @@ function generateBOM(id) {
   }
 
   out.innerHTML='<div class="bom-section"><p class="detect-line">I have detected '+names[sys]+(ref?' \u2013 '+ref:'')+'</p>' +
-
     '<div style="overflow-x:auto;"><table class="bom"><thead><tr><th>Product</th><th>Code</th><th>Specification</th><th>Qty</th></tr></thead>' +
     '<tbody>'+bom.map(function(r){return '<tr><td>'+r.pr+'</td><td>'+r.c+'</td><td>'+r.s+'</td><td>'+r.q+'</td></tr>';}).join('')+'</tbody></table>' +
     sys2html+'</div>' +
     '<div class="actions-row"><button class="btn-excel" onclick="exportExcel('+id+')">&#8595; Download Excel</button></div>' +
     conNote+castNote+'</div>';
+
+  // Log this BOM generation
+  logBOM(ref || p.project_ref || '', p.floor_name || '', sys);
 
   if(Object.values(panels).some(function(x){return x.bom&&x.bom.length>0;}))
     document.getElementById('promptBar').style.display='block';
@@ -1218,7 +1365,6 @@ function buildCombined() {
   wrap.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
-// ── Bulk settings ──
 var bulkAnswers = {};
 
 function selectAllFloors() {
@@ -1237,7 +1383,6 @@ function selectAllFloors() {
 }
 
 function checkBulkBar() {
-  // Only show bulk bar when ALL progress items are complete (none still reading)
   var allDone = Object.values(progressMap).every(function(v){ return v === 'done' || v === 'error'; });
   if(!allDone || Object.keys(progressMap).length === 0) return;
 
@@ -1270,8 +1415,7 @@ function setBulk(key, val) {
   var sections = {dpm:'bulkDpmSection',clips:'bulkClipsSection',sub:'bulkSubSection',cast:'bulkCastSection',insulation:'bulkInsulationSection'};
   var sec = document.getElementById(sections[key]);
   if(sec) sec.querySelectorAll('.q-btn').forEach(function(btn){
-    var matches = btn.textContent.trim() === val || btn.textContent.trim().indexOf(val) === 0;
-    btn.classList.toggle('sel', matches);
+    btn.classList.toggle('sel', btn.textContent.trim() === val || btn.textContent.trim().indexOf(val) === 0);
   });
   Object.keys(panels).forEach(function(id) {
     var nid = parseInt(id);
@@ -1294,24 +1438,22 @@ function setBulk(key, val) {
 function generateAllBOMs() {
   var ids = Object.keys(panels);
   var count = 0;
-  var skipped = [];
   ids.forEach(function(id) {
     var nid = parseInt(id);
     var p = panels[nid];
-    if(!p||!p.system_type){skipped.push('panel '+nid+': no system');return;}
+    if(!p||!p.system_type) return;
     var sysEl = document.getElementById('sys-'+nid);
     if(sysEl&&!sysEl.value) sysEl.value = p.system_type;
     var grossEl = document.getElementById('gross-'+nid);
     var gross = grossEl ? parseFloat(grossEl.value) : 0;
-    if(gross<=0){skipped.push('panel '+nid+': gross=0');return;}
+    if(gross<=0) return;
     generateBOM(nid);
     count++;
   });
   var status = document.getElementById('bulkStatus');
-  status.textContent = '✓ Generated '+count+' BOM'+(count!==1?'s':'')+(skipped.length?' ('+skipped.length+' skipped)':'');
+  status.textContent = '✓ Generated '+count+' BOM'+(count!==1?'s':'');
 }
 
-// ── Pipe consolidation ──
 var PIPE16={'30500':500,'30240':240,'30120':120};
 var PIPE12={'30050':500,'30020':200,'39000':100};
 
@@ -1375,7 +1517,6 @@ function calcCoils12(tm){
   return res;
 }
 
-
 function exportCombined() {
   if(!window._combinedBom)return;
   var data=[['Product','Code','Specification','Quantity']].concat(window._combinedBom.map(function(r){return[r.pr,r.c,r.s,r.q];}));
@@ -1385,20 +1526,6 @@ function exportCombined() {
   XLSX.utils.book_append_sheet(wb,ws,'Combined BOM');
   XLSX.writeFile(wb,'UFH_BOM_Combined.xlsx');
 }
-
-function showFloorLoadedNotice(count, filename) {
-  var existing = document.getElementById('floorNotice');
-  if(existing) existing.remove();
-  var notice = document.createElement('div');
-  notice.id = 'floorNotice';
-  notice.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--success);color:#fff;padding:10px 18px;border-radius:var(--radius-lg);font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:999;transition:opacity 0.5s;';
-  var totalPanels = Object.keys(panels).length;
-  notice.textContent = '✓ ' + totalPanels + ' floor' + (count!==1?'s':'') + ' loaded — ' + short;
-  document.body.appendChild(notice);
-  setTimeout(function(){ notice.style.opacity='0'; setTimeout(function(){ if(notice.parentNode)notice.remove(); },500); }, 4000);
-}
-
-
 </script>
 </body>
 </html>
