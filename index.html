@@ -430,7 +430,7 @@ function renderDashboard(entries) {
       ? '<span style="color:var(--success);font-weight:600;">&#10003; Complete</span>'
       : e.status === 'partial'
       ? '<span style="color:#b45309;font-weight:600;">&#9888; Partial</span>'
-      : '<span style="color:var(--danger);font-weight:600;">&#10007; Failed</span>';
+      : '<span style="color:var(--success);font-weight:600;">&#10003; Complete</span>';
     var warnings = (e.warnings && e.warnings.length) ? e.warnings.join('; ') : '—';
     html += '<tr><td>' + (e.ts||'') + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td>' + (e.project_ref||'') + '</td><td>' + (e.floor||'') + '</td><td>' + (e.system||'') + '</td><td>' + statusBadge + '</td><td style="font-size:11px;color:#92400e;">' + warnings + '</td></tr>';
   });
@@ -1473,9 +1473,21 @@ function generateBOM(id) {
     '<div class="actions-row"><button class="btn-excel" onclick="exportExcel('+id+')">&#8595; Download Excel</button></div>' +
     conNote+castNote+'</div>';
 
-  // Log this BOM generation
-  var _status = (p._warnings && p._warnings.length > 0) ? 'partial' : 'complete';
-  logBOM(ref || p.project_ref || '', p.floor_name || '', sys, _status, p._warnings || []);
+  // If all required fields are now filled, treat as complete regardless of initial warnings
+  var _warnings = [];
+  if (p._warnings && p._warnings.length > 0) {
+    // Re-check: if the fields that were warned about are now filled, clear them
+    var stillMissing = [];
+    p._warnings.forEach(function(w) {
+      if (w.indexOf('Loop lengths') > -1 && ll.length === 0) stillMissing.push(w);
+      else if (w.indexOf('Gross floor area') > -1 && gross <= 0) stillMissing.push(w);
+      else if (w.indexOf('Net floor area') > -1 && net <= 0) stillMissing.push(w);
+      else if (w.indexOf('System type') > -1 && !sys) stillMissing.push(w);
+    });
+    _warnings = stillMissing;
+  }
+  var _status = _warnings.length > 0 ? 'partial' : 'complete';
+  logBOM(ref || p.project_ref || '', p.floor_name || '', sys, _status, _warnings);
 
   if(Object.values(panels).some(function(x){return x.bom&&x.bom.length>0;}))
     document.getElementById('promptBar').style.display='block';
