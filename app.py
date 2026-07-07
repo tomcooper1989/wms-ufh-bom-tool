@@ -4,7 +4,7 @@ Deployed on Railway. Users access via browser, no local install needed.
 """
 
 from flask import Flask, request, jsonify, send_from_directory, redirect, session
-import os, tempfile, functools
+import os, tempfile, functools, json, datetime
 
 # Import all extraction logic from server.py
 from server import scan_pdf_pages, scan_and_extract, extract_page
@@ -14,6 +14,35 @@ app.secret_key = os.environ.get('SECRET_KEY', 'change-this-in-production')
 
 # Password from environment variable — set in Railway dashboard
 ACCESS_PASSWORD = os.environ.get('ACCESS_PASSWORD', '')
+
+# Dashboard password — set DASHBOARD_PASSWORD in Railway env vars
+DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD', 'wms-admin')
+
+# Log file path — persists on Railway volume if configured, otherwise ephemeral
+LOG_FILE = os.environ.get('LOG_FILE', '/tmp/bom_usage.json')
+
+
+# ---------------------------------------------------------------
+# Usage logging helpers
+# ---------------------------------------------------------------
+
+def load_log():
+    try:
+        if os.path.exists(LOG_FILE):
+            with open(LOG_FILE, 'r') as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return []
+
+
+def save_log(entries):
+    try:
+        with open(LOG_FILE, 'w') as f:
+            json.dump(entries, f, indent=2)
+    except Exception:
+        pass
+
 
 # ---------------------------------------------------------------
 # Authentication
@@ -63,6 +92,44 @@ def login():
 def logout():
     session.clear()
     return redirect('/login')
+
+
+# ---------------------------------------------------------------
+# Usage logging endpoints
+# ---------------------------------------------------------------
+
+@app.route('/log_bom', methods=['POST'])
+@login_required
+def log_bom():
+    """Called by the browser each time a BOM is generated."""
+    try:
+        data = request.get_json(force=True) or {}
+        entry = {
+            'ts': datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+            'user': str(data.get('user', '')).strip()[:80],
+            'project_ref': str(data.get('project_ref', '')).strip()[:80],
+            'floor': str(data.get('floor', '')).strip()[:80],
+            'system': str(data.get('system', '')).strip()[:40],
+        }
+        entries = load_log()
+        entries.append(entry)
+        save_log(entries)
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+
+
+@app.route('/dashboard_data', methods=['POST'])
+def dashboard_data():
+    """Returns usage data — protected by dashboard password in request body."""
+    try:
+        data = request.get_json(force=True) or {}
+        if data.get('password') != DASHBOARD_PASSWORD:
+            return jsonify({'error': 'wrong password'}), 403
+        entries = load_log()
+        return jsonify({'entries': entries})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ---------------------------------------------------------------
