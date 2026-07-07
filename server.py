@@ -519,10 +519,29 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
             if 5 < len(t) < 100:
                 drawing_title = t
 
+        # Count manifolds via char-level row scan — the only reliable method.
+        # Every manifold table has a header row containing both MassFlowRate and
+        # HeatRequired (spaces stripped). Count HeatRequired occurrences per row
+        # to handle cases where two manifold headers share the same Y position.
+        mf_count_chars = 0
+        try:
+            from collections import defaultdict as _mfdd
+            _mf_rows = _mfdd(list)
+            for _c in _page_chars_unit:
+                _mf_rows[round(_c['top']/2)*2].append(_c)
+            for _mfy, _mfrc in sorted(_mf_rows.items()):
+                _mfrc.sort(key=lambda c: c['x0'])
+                _mftxt = decode_cid(''.join(c['text'] for c in _mfrc)).lower().replace(' ', '')
+                if 'massflowrate' in _mftxt and 'heatrequired' in _mftxt:
+                    mf_count_chars += len(re.findall(r'heatrequired', _mftxt))
+        except Exception:
+            pass
+        # Fallback text methods if char scan found nothing
         mf_count_heat = len(re.findall(r'Heat.{0,5}Required.{0,5}At.{0,5}Manifold', raw_text, re.IGNORECASE))
+        mf_count_heat = max(mf_count_heat, len(re.findall(r'HeatRequiredAtManifold', raw_text, re.IGNORECASE)))
         mf_names = re.findall(r'Manifold[\s]*(?:MH|G|B)[\d\.]+', raw_text, re.IGNORECASE)
         mf_count_names = len(set(mf_names))
-        num_manifolds = max(1, mf_count_heat, mf_count_names)
+        num_manifolds = max(1, mf_count_chars, mf_count_heat, mf_count_names)
 
         # System type — try raw_text first, then _chars_text as fallback.
         # _chars_text is the full concatenation of all page chars and catches cases where
@@ -960,6 +979,7 @@ def scan_pdf_pages(pdf_path):
         for i, raw in enumerate(page_texts):
             floor_name = get_floor_name(raw) or "Page {}".format(i + 1)
             mf_count = len(re.findall(r'Heat.{0,5}Required.{0,5}At.{0,5}Manifold', raw, re.IGNORECASE))
+            mf_count = max(mf_count, len(re.findall(r'HeatRequiredAtManifold', raw, re.IGNORECASE)))
             is_unreadable = not raw.strip()
             _may_have_units = bool(re.search(
                 r'\bType\s+\d|\bPlot\s+\d|\bUnit\s+[A-Z0-9]|\bPhase\s+\d', raw, re.IGNORECASE))
@@ -1005,6 +1025,7 @@ def scan_and_extract(pdf_path):
                 raw = decode_cid(page.extract_text(layout=False, x_tolerance=3, y_tolerance=3) or "")
                 floor_name = get_floor_name(raw) or "Page {}".format(i + 1)
                 mf_count = len(re.findall(r'Heat.{0,5}Required.{0,5}At.{0,5}Manifold', raw, re.IGNORECASE))
+                mf_count = max(mf_count, len(re.findall(r'HeatRequiredAtManifold', raw, re.IGNORECASE)))
                 is_unreadable = len(page.chars) == 0
                 units, split_x = ([], None) if is_unreadable else detect_units_on_page(raw, page.chars)
                 pages_info.append({
