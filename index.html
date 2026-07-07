@@ -27,13 +27,20 @@ header { background: var(--surface); border-bottom: 1px solid var(--border); pad
 h1 { font-size: 22px; font-weight: 600; margin-bottom: 0.25rem; letter-spacing: -0.02em; }
 .page-sub { color: var(--text-muted); font-size: 13px; margin-bottom: 1.5rem; }
 
-/* Name field */
-.name-bar { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem 1.25rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
-.name-bar label { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; }
-.name-bar input { height: 36px; border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 0 10px; font-size: 13px; color: var(--text); background: var(--surface); outline: none; width: 220px; transition: border-color 0.15s; }
-.name-bar input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(29,78,216,0.1); }
-.name-bar input.invalid { border-color: var(--danger); box-shadow: 0 0 0 2px rgba(220,38,38,0.1); }
-.name-bar .name-hint { font-size: 12px; color: var(--text-muted); }
+/* Name modal */
+.name-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 200; align-items: center; justify-content: center; }
+.name-modal-overlay.open { display: flex; }
+.name-modal-box { background: var(--surface); border-radius: var(--radius-lg); box-shadow: 0 8px 40px rgba(0,0,0,0.2); width: min(95vw, 380px); padding: 2rem; }
+.name-modal-box h2 { font-size: 18px; font-weight: 700; margin-bottom: 0.35rem; }
+.name-modal-box p { font-size: 13px; color: var(--text-muted); margin-bottom: 1.25rem; }
+.name-modal-box input { width: 100%; height: 40px; border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 0 12px; font-size: 14px; margin-bottom: 0.75rem; outline: none; }
+.name-modal-box input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(29,78,216,0.1); }
+.name-modal-box button { width: 100%; height: 40px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius); font-size: 14px; font-weight: 600; cursor: pointer; }
+.name-modal-box button:hover { opacity: 0.88; }
+.name-modal-err { color: var(--danger); font-size: 12px; margin-bottom: 0.5rem; display: none; }
+/* Name chip in header */
+.user-chip { font-size: 12px; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: 99px; padding: 3px 10px 3px 8px; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.user-chip:hover { border-color: var(--accent); color: var(--accent); }
 
 .upload-zone { border: 2px dashed var(--border-strong); border-radius: var(--radius-lg); padding: 2.5rem 2rem; text-align: center; transition: all 0.2s; background: var(--surface); margin-bottom: 1.25rem; }
 .upload-zone.drag-over { border-color: var(--accent); background: var(--accent-bg); }
@@ -154,8 +161,20 @@ table.bom tr:hover td { background: var(--bg); }
   <div class="badge">v1.4</div>
   <div class="spacer"></div>
   <button class="btn-clear-all" id="btnClearAll" onclick="clearAll()">Clear all</button>
+  <span class="user-chip" id="userChip" onclick="resetName()" title="Click to change name" style="display:none;">👤 <span id="userChipName"></span></span>
   <button class="btn-settings" title="Settings" onclick="openDashboard()">⚙</button>
 </header>
+
+<!-- Name capture modal -->
+<div class="name-modal-overlay" id="nameModal">
+  <div class="name-modal-box">
+    <h2>Welcome to the BOM Tool</h2>
+    <p>Enter your name once — it will be remembered on this device so you won't be asked again.</p>
+    <input type="text" id="nameModalInput" placeholder="Your full name" autocomplete="name" onkeydown="if(event.key==='Enter')saveName()" />
+    <div class="name-modal-err" id="nameModalErr">Please enter your name to continue.</div>
+    <button onclick="saveName()">Continue</button>
+  </div>
+</div>
 
 <!-- Dashboard modal -->
 <div class="modal-overlay" id="dashModal">
@@ -191,13 +210,6 @@ table.bom tr:hover td { background: var(--bg); }
 
 <div class="container">
   <p class="page-sub">Drop any number of WMS drawing PDFs — each gets its own picking list</p>
-
-  <!-- Name field -->
-  <div class="name-bar">
-    <label for="userNameInput">Your name:</label>
-    <input type="text" id="userNameInput" placeholder="e.g. Sarah Jones" autocomplete="name" />
-    <span class="name-hint">Required before generating a BOM</span>
-  </div>
 
   <div class="upload-zone" id="uploadZone">
     <div class="upload-icon">&#128196;</div>
@@ -384,11 +396,43 @@ function renderDashboard(entries) {
   });
   html += '</tbody></table>';
 
-  html += '<p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:0.5rem;">All activity (newest first)</p>';
-  html += '<table class="dash-table"><thead><tr><th>Date / Time (UTC)</th><th>User</th><th>Project ref</th><th>Floor</th><th>System</th></tr></thead><tbody>';
-  var sorted = entries.slice().reverse();
+  // Failure files section
+  var failures = entries.filter(function(e){ return e.type === 'failure'; });
+  var completeFails = failures.filter(function(e){ return e.failure_type !== 'partial'; });
+  var partialFails = failures.filter(function(e){ return e.failure_type === 'partial'; });
+
+  if (completeFails.length) {
+    html += '<p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#dc2626;margin-bottom:0.5rem;">&#10007; Complete read failures</p>';
+    html += '<table class="dash-table" style="margin-bottom:1.25rem;"><thead><tr><th>Date / Time</th><th>User</th><th>Filename</th><th>Reason</th><th></th></tr></thead><tbody>';
+    completeFails.slice().reverse().forEach(function(e){
+      html += '<tr><td>' + (e.ts||'') + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td style="font-size:11px;">' + (e.filename||'') + '</td><td style="font-size:11px;color:#92400e;">' + (e.reason||'') + '</td>' +
+        (e.saved_as ? '<td><button class="dash-btn" onclick="downloadFailure(\'' + e.saved_as + '\')">&#8595; Download</button></td>' : '<td>—</td>') + '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  if (partialFails.length) {
+    html += '<p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#b45309;margin-bottom:0.5rem;">&#9888; Partial read failures</p>';
+    html += '<table class="dash-table" style="margin-bottom:1.25rem;"><thead><tr><th>Date / Time</th><th>User</th><th>Filename</th><th>Missing data</th><th></th></tr></thead><tbody>';
+    partialFails.slice().reverse().forEach(function(e){
+      html += '<tr><td>' + (e.ts||'') + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td style="font-size:11px;">' + (e.filename||'') + '</td><td style="font-size:11px;color:#92400e;">' + (e.reason||'') + '</td>' +
+        (e.saved_as ? '<td><button class="dash-btn" onclick="downloadFailure(\'' + e.saved_as + '\')">&#8595; Download</button></td>' : '<td>—</td>') + '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  html += '<p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:0.5rem;">All BOM activity (newest first)</p>';
+  html += '<table class="dash-table"><thead><tr><th>Date / Time (UTC)</th><th>User</th><th>Project ref</th><th>Floor</th><th>System</th><th>Status</th><th>Issues</th></tr></thead><tbody>';
+  var bomEntries = entries.filter(function(e){ return !e.type || e.type !== 'failure'; });
+  var sorted = bomEntries.slice().reverse();
   sorted.forEach(function(e){
-    html += '<tr><td>' + (e.ts||'') + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td>' + (e.project_ref||'') + '</td><td>' + (e.floor||'') + '</td><td>' + (e.system||'') + '</td></tr>';
+    var statusBadge = e.status === 'complete'
+      ? '<span style="color:var(--success);font-weight:600;">&#10003; Complete</span>'
+      : e.status === 'partial'
+      ? '<span style="color:#b45309;font-weight:600;">&#9888; Partial</span>'
+      : '<span style="color:var(--danger);font-weight:600;">&#10007; Failed</span>';
+    var warnings = (e.warnings && e.warnings.length) ? e.warnings.join('; ') : '—';
+    html += '<tr><td>' + (e.ts||'') + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td>' + (e.project_ref||'') + '</td><td>' + (e.floor||'') + '</td><td>' + (e.system||'') + '</td><td>' + statusBadge + '</td><td style="font-size:11px;color:#92400e;">' + warnings + '</td></tr>';
   });
   html += '</tbody></table>';
 
@@ -396,28 +440,111 @@ function renderDashboard(entries) {
   document.getElementById('dashContent').innerHTML = html;
 }
 
+async function downloadFailure(savedAs) {
+  var pw = document.getElementById('dashPwInput').value;
+  var res = await fetch('/download_failure/' + encodeURIComponent(savedAs), {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({password: pw})
+  });
+  if (!res.ok) { alert('Download failed — check password'); return; }
+  var blob = await res.blob();
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = savedAs; a.click();
+}
+
 function exportDashCSV() {
   var entries = window._dashEntries || [];
-  var rows = [['Date/Time (UTC)','User','Project Ref','Floor','System']].concat(
-    entries.map(function(e){ return [e.ts||'', e.user||'', e.project_ref||'', e.floor||'', e.system||'']; })
+  var rows = [['Date/Time (UTC)','User','Project Ref','Floor','System','Status','Issues','Failure Filename']].concat(
+    entries.map(function(e){
+      return [
+        e.ts||'', e.user||'',
+        e.project_ref||'', e.floor||'', e.system||'',
+        e.type==='failure' ? 'Read Failure' : (e.status||'complete'),
+        (e.warnings||[]).join('; ') || (e.reason||''),
+        e.filename||''
+      ];
+    })
   );
   var csv = rows.map(function(r){ return r.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
   var blob = new Blob([csv], {type:'text/csv'});
   var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'WMS_BOM_Usage.csv'; a.click();
 }
 
-// ── Usage logging ──
-function getCurrentUser() {
-  return (document.getElementById('userNameInput').value || '').trim();
+// ── Name capture ──
+var _currentUser = '';
+
+function initName() {
+  var saved = '';
+  try { saved = localStorage.getItem('wms_bom_user') || ''; } catch(e){}
+  if (saved) {
+    _currentUser = saved;
+    showUserChip(saved);
+  } else {
+    document.getElementById('nameModal').classList.add('open');
+    setTimeout(function(){ document.getElementById('nameModalInput').focus(); }, 100);
+  }
 }
 
-function logBOM(projectRef, floorName, systemType) {
+function saveName() {
+  var val = (document.getElementById('nameModalInput').value || '').trim();
+  var err = document.getElementById('nameModalErr');
+  if (!val) { err.style.display = 'block'; return; }
+  err.style.display = 'none';
+  _currentUser = val;
+  try { localStorage.setItem('wms_bom_user', val); } catch(e){}
+  document.getElementById('nameModal').classList.remove('open');
+  showUserChip(val);
+}
+
+function showUserChip(name) {
+  var chip = document.getElementById('userChip');
+  document.getElementById('userChipName').textContent = name;
+  chip.style.display = 'flex';
+}
+
+function resetName() {
+  if (!confirm('Change your name? You will be asked to re-enter it.')) return;
+  try { localStorage.removeItem('wms_bom_user'); } catch(e){}
+  _currentUser = '';
+  document.getElementById('userChip').style.display = 'none';
+  document.getElementById('nameModalInput').value = '';
+  document.getElementById('nameModal').classList.add('open');
+  setTimeout(function(){ document.getElementById('nameModalInput').focus(); }, 100);
+}
+
+// Run on load
+initName();
+
+// ── Usage logging ──
+function getCurrentUser() {
+  return _currentUser;
+}
+
+function logBOM(projectRef, floorName, systemType, status, warnings) {
   var user = getCurrentUser();
   fetch('/log_bom', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({user: user, project_ref: projectRef, floor: floorName, system: systemType})
+    body: JSON.stringify({
+      user: user,
+      project_ref: projectRef,
+      floor: floorName,
+      system: systemType,
+      status: status || 'complete',
+      warnings: warnings || []
+    })
   }).catch(function(){});
+}
+
+function logFailure(file, reason, type) {
+  var user = getCurrentUser();
+  var fd = new FormData();
+  fd.append('user', user);
+  fd.append('filename', file.name);
+  fd.append('reason', reason);
+  fd.append('failure_type', type || 'complete');
+  fd.append('pdf', file, file.name);
+  fetch('/log_failure', { method: 'POST', body: fd }).catch(function(){});
 }
 
 // ── Upload handling ──
@@ -579,6 +706,7 @@ async function loadPDF(id, file) {
         setStatus(id, '\u2717 Drawing cannot be read \u2014 see message above', 'error');
         setProgressFile(file.name, 'error');
         document.getElementById('topWarningBanner').style.display = 'block';
+        logFailure(file, 'Complete read failure — unreadable PDF (Plot to PDF)');
         var formEl = document.getElementById('form-' + id);
         if (formEl) formEl.innerHTML =
           '<div style="margin-top:0.75rem;background:#fee2e2;border:2px solid #dc2626;border-radius:var(--radius);padding:0.8rem 1rem;">' +
@@ -595,6 +723,7 @@ async function loadPDF(id, file) {
           setStatus(id, '\u2717 Drawing cannot be read \u2014 see message above', 'error');
           setProgressFile(file.name, 'error');
           document.getElementById('topWarningBanner').style.display = 'block';
+          logFailure(file, 'Complete read failure — unreadable PDF (Plot to PDF)');
           var formEl2 = document.getElementById('form-' + id);
           if (formEl2) formEl2.innerHTML =
             '<div style="margin-top:0.75rem;background:#fee2e2;border:2px solid #dc2626;border-radius:var(--radius);padding:0.8rem 1rem;">' +
@@ -609,6 +738,9 @@ async function loadPDF(id, file) {
           var formEl3 = document.getElementById('form-' + id);
           if (formEl3) formEl3.insertAdjacentHTML('afterbegin', warnHtml);
           addTopIssue(file.name, data.floor_name, data.warnings);
+          panels[id]._file = file;
+          panels[id]._warnings = data.warnings;
+          logFailure(file, data.warnings.join('; '), 'partial');
           applyData(id, data);
         } else {
           setStatus(id, '\u2713 Auto-filled from PDF \u2014 check before generating' + _methodNote, 'ok');
@@ -647,6 +779,7 @@ async function extractPage(id, file, pageIndex, unitIndex, splitX, unitLabel, fl
       setStatus(id, '\u2717 Drawing cannot be read \u2014 see message above', 'error');
       setProgressFile(file.name, 'error');
       document.getElementById('topWarningBanner').style.display = 'block';
+      logFailure(file, 'Complete read failure — unreadable PDF (Plot to PDF)');
       var formEl = document.getElementById('form-' + id);
       if (formEl) formEl.innerHTML =
         '<div style="margin-top:0.75rem;background:#fee2e2;border:2px solid #dc2626;border-radius:var(--radius);padding:0.8rem 1rem;">' +
@@ -665,6 +798,9 @@ async function extractPage(id, file, pageIndex, unitIndex, splitX, unitLabel, fl
       var formEl = document.getElementById('form-' + id);
       if (formEl) formEl.insertAdjacentHTML('afterbegin', warnHtml);
       addTopIssue(file.name, data.floor_name, data.warnings);
+      panels[id]._file = file;
+      panels[id]._warnings = data.warnings;
+      logFailure(file, data.warnings.join('; '), 'partial');
     } else {
       setStatus(id, '\u2713 Auto-filled from PDF \u2014 check before generating' + _buildMethodNote(data), 'ok');
       setProgressFile(file.name, 'done');
@@ -1338,7 +1474,8 @@ function generateBOM(id) {
     conNote+castNote+'</div>';
 
   // Log this BOM generation
-  logBOM(ref || p.project_ref || '', p.floor_name || '', sys);
+  var _status = (p._warnings && p._warnings.length > 0) ? 'partial' : 'complete';
+  logBOM(ref || p.project_ref || '', p.floor_name || '', sys, _status, p._warnings || []);
 
   if(Object.values(panels).some(function(x){return x.bom&&x.bom.length>0;}))
     document.getElementById('promptBar').style.display='block';
