@@ -363,6 +363,18 @@ async function loadDashboard() {
   }
 }
 
+function toUKTime(utcStr) {
+  if (!utcStr) return '';
+  // Parse UTC string from server (format: "2026-07-08 10:13:30")
+  var d = new Date(utcStr.replace(' ', 'T') + 'Z');
+  return d.toLocaleString('en-GB', {
+    timeZone: 'Europe/London',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  });
+}
+
 function renderDashboard(entries) {
   // Summary stats
   var totalBoms = entries.length;
@@ -372,8 +384,8 @@ function renderDashboard(entries) {
     userCounts[u] = (userCounts[u] || 0) + 1;
   });
   var uniqueUsers = Object.keys(userCounts).length;
-  var today = new Date().toISOString().slice(0,10);
-  var todayCount = entries.filter(function(e){ return e.ts && e.ts.startsWith(today); }).length;
+  var today = new Date().toLocaleDateString('en-GB', {timeZone:'Europe/London'}).split('/').reverse().join('-');
+  var todayCount = entries.filter(function(e){ return e.ts && toUKTime(e.ts).startsWith(today); }).length;
 
   // User summary rows sorted by count desc
   var userRows = Object.entries(userCounts).sort(function(a,b){ return b[1]-a[1]; });
@@ -405,7 +417,7 @@ function renderDashboard(entries) {
     html += '<p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#dc2626;margin-bottom:0.5rem;">&#10007; Complete read failures</p>';
     html += '<table class="dash-table" style="margin-bottom:1.25rem;"><thead><tr><th>Date / Time</th><th>User</th><th>Filename</th><th>Reason</th><th></th></tr></thead><tbody>';
     completeFails.slice().reverse().forEach(function(e){
-      html += '<tr><td>' + (e.ts||'') + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td style="font-size:11px;">' + (e.filename||'') + '</td><td style="font-size:11px;color:#92400e;">' + (e.reason||'') + '</td>' +
+      html += '<tr><td>' + toUKTime(e.ts) + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td style="font-size:11px;">' + (e.filename||'') + '</td><td style="font-size:11px;color:#92400e;">' + (e.reason||'') + '</td>' +
         (e.saved_as ? '<td><button class="dash-btn" onclick="downloadFailure(\'' + e.saved_as + '\')">&#8595; Download</button></td>' : '<td>—</td>') + '</tr>';
     });
     html += '</tbody></table>';
@@ -415,14 +427,14 @@ function renderDashboard(entries) {
     html += '<p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#b45309;margin-bottom:0.5rem;">&#9888; Partial read failures</p>';
     html += '<table class="dash-table" style="margin-bottom:1.25rem;"><thead><tr><th>Date / Time</th><th>User</th><th>Filename</th><th>Missing data</th><th></th></tr></thead><tbody>';
     partialFails.slice().reverse().forEach(function(e){
-      html += '<tr><td>' + (e.ts||'') + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td style="font-size:11px;">' + (e.filename||'') + '</td><td style="font-size:11px;color:#92400e;">' + (e.reason||'') + '</td>' +
+      html += '<tr><td>' + toUKTime(e.ts) + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td style="font-size:11px;">' + (e.filename||'') + '</td><td style="font-size:11px;color:#92400e;">' + (e.reason||'') + '</td>' +
         (e.saved_as ? '<td><button class="dash-btn" onclick="downloadFailure(\'' + e.saved_as + '\')">&#8595; Download</button></td>' : '<td>—</td>') + '</tr>';
     });
     html += '</tbody></table>';
   }
 
   html += '<p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:0.5rem;">All BOM activity (newest first)</p>';
-  html += '<table class="dash-table"><thead><tr><th>Date / Time (UTC)</th><th>User</th><th>Project ref</th><th>Floor</th><th>System</th><th>Status</th><th>Issues</th></tr></thead><tbody>';
+  html += '<table class="dash-table"><thead><tr><th>Date / Time (UK)</th><th>User</th><th>Project ref</th><th>Floor</th><th>System</th><th>Status</th><th>Issues</th></tr></thead><tbody>';
   var bomEntries = entries.filter(function(e){ return !e.type || e.type !== 'failure'; });
   var sorted = bomEntries.slice().reverse();
   sorted.forEach(function(e){
@@ -432,7 +444,7 @@ function renderDashboard(entries) {
       ? '<span style="color:#b45309;font-weight:600;">&#9888; Partial read</span>'
       : '<span style="color:#b45309;font-weight:600;">&#9888; Partial read</span>';
     var warnings = (e.warnings && e.warnings.length) ? e.warnings.join('; ') : '—';
-    html += '<tr><td>' + (e.ts||'') + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td>' + (e.project_ref||'') + '</td><td>' + (e.floor||'') + '</td><td>' + (e.system||'') + '</td><td>' + statusBadge + '</td><td style="font-size:11px;color:#92400e;">' + warnings + '</td></tr>';
+    html += '<tr><td>' + toUKTime(e.ts) + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td>' + (e.project_ref||'') + '</td><td>' + (e.floor||'') + '</td><td>' + (e.system||'') + '</td><td>' + statusBadge + '</td><td style="font-size:11px;color:#92400e;">' + warnings + '</td></tr>';
   });
   html += '</tbody></table>';
 
@@ -454,10 +466,10 @@ async function downloadFailure(savedAs) {
 
 function exportDashCSV() {
   var entries = window._dashEntries || [];
-  var rows = [['Date/Time (UTC)','User','Project Ref','Floor','System','Status','Issues','Failure Filename']].concat(
+  var rows = [['Date/Time (UK)','User','Project Ref','Floor','System','Status','Issues','Failure Filename']].concat(
     entries.map(function(e){
       return [
-        e.ts||'', e.user||'',
+        toUKTime(e.ts), e.user||'',
         e.project_ref||'', e.floor||'', e.system||'',
         e.type==='failure' ? 'Read Failure' : (e.status||'complete'),
         (e.warnings||[]).join('; ') || (e.reason||''),
@@ -1480,6 +1492,10 @@ function generateBOM(id) {
   var _readWarnings = p._warnings || [];
   var _status = _readWarnings.length > 0 ? 'partial' : 'complete';
   logBOM(ref || p.project_ref || '', p.floor_name || '', sys, _status, _readWarnings);
+  // Also log to failure list if partial — ensures it appears in dashboard failures section
+  if (_status === 'partial' && p._file) {
+    logFailure(p._file, _readWarnings.join('; '), 'partial');
+  }
 
   if(Object.values(panels).some(function(x){return x.bom&&x.bom.length>0;}))
     document.getElementById('promptBar').style.display='block';
