@@ -46,6 +46,8 @@ def get_floor_name(raw):
                 (r'BasementFloor', 'Basement Floor'),
                 (r'Basement', 'Basement Floor'),
                 (r'LowerGround', 'Lower Ground Floor'),
+                (r'GardenLevel', 'Garden Level'),
+                (r'GardenFloor', 'Garden Level'),
                 (r'FirstFloor', 'First Floor'),
                 (r'SecondFloor', 'Second Floor'),
                 (r'SecoundFloor', 'Second Floor'),
@@ -65,16 +67,27 @@ def get_floor_name(raw):
                 all_matches.sort(key=lambda x: (x[1], x[1] - x[0]), reverse=True)
                 return all_matches[0][2]
 
+    floor_patterns = [
+        ('FIRSTFLOOR', 'First Floor'), ('SECONDFLOOR', 'Second Floor'),
+        ('THIRDFLOOR', 'Third Floor'), ('FOURTHFLOOR', 'Fourth Floor'),
+        ('FIFTHFLOOR', 'Fifth Floor'), ('SIXTHFLOOR', 'Sixth Floor'),
+        ('GROUNDFLOOR', 'Ground Floor'), ('BASEMENTFLOOR', 'Basement Floor'),
+        ('LOWERGROUNDFLOOR', 'Lower Ground Floor'), ('LOWERGROUND', 'Lower Ground Floor'),
+        ('GARDENLEVEL', 'Garden Level'), ('GARDENFLOOR', 'Garden Level'),
+    ]
+    # First try early lines
     for line in raw.split('\n')[:20]:
-        line_ns = line.replace(' ', '')
-        for pattern, label in [
-            ('FIRSTFLOOR', 'First Floor'), ('SECONDFLOOR', 'Second Floor'),
-            ('THIRDFLOOR', 'Third Floor'), ('FOURTHFLOOR', 'Fourth Floor'),
-            ('FIFTHFLOOR', 'Fifth Floor'), ('SIXTHFLOOR', 'Sixth Floor'),
-            ('GROUNDFLOOR', 'Ground Floor'), ('BASEMENTFLOOR', 'Basement Floor'),
-            ('LOWERGROUNDFLOOR', 'Lower Ground Floor'),
-        ]:
+        line_ns = line.replace(' ', '').replace('\t', '')
+        for pattern, label in floor_patterns:
             if pattern in line_ns.upper():
+                return label
+    # Full text scan — catches title block when interleaved with notes
+    raw_ns_full = raw.replace(' ', '').replace('\n', '').upper()
+    for pattern, label in floor_patterns:
+        if pattern in raw_ns_full:
+            idx = raw_ns_full.find(pattern)
+            context = raw_ns_full[max(0, idx-50):idx+100]
+            if any(kw in context for kw in ['LAYOUT', 'TOWNHOUSE', 'PROPOSED', 'UNDERFLOOR', 'CHECKED', 'DRAWN', 'SCALE', 'REVISION']):
                 return label
 
     return None
