@@ -220,6 +220,7 @@ def _handle_pdf_request(endpoint):
     unit_label = request.form.get('unit_label')
     floor_name_override = request.form.get('floor_name_override')
     project_ref_override = request.form.get('project_ref_override')
+    system_type_hint = request.form.get('system_type_hint') or None
 
     if unit_index is not None:
         try: unit_index = int(unit_index)
@@ -242,7 +243,8 @@ def _handle_pdf_request(endpoint):
                                   unit_index=unit_index, split_x=split_x,
                                   unit_label=unit_label,
                                   floor_name_override=floor_name_override,
-                                  project_ref_override=project_ref_override)
+                                  project_ref_override=project_ref_override,
+                                  system_type_hint=system_type_hint)
     except Exception as e:
         import traceback
         traceback.print_exc()
