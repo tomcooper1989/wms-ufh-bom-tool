@@ -336,7 +336,7 @@ def extract_areas_from_chars_data(chars):
             if not vals and idx_r > 0:
                 prev_chars = sorted(sorted_items[idx_r-1][1], key=lambda c: c['x0'])
                 vals = _extract_values_from_chars(prev_chars)
-            gross_areas = vals
+            gross_areas += vals  # accumulate across all room tables
         elif re.search(r'Net\s*Floor\s*Area', raw_text, re.IGNORECASE):
             vals = _parse_area_row(row_chars, raw_text)
             if not vals and idx_r + 1 < len(sorted_items):
@@ -347,7 +347,7 @@ def extract_areas_from_chars_data(chars):
             if not vals and idx_r > 0:
                 prev_chars = sorted(sorted_items[idx_r-1][1], key=lambda c: c['x0'])
                 vals = _extract_values_from_chars(prev_chars)
-            net_areas = vals
+            net_areas += vals  # accumulate across all room tables
     return gross_areas, net_areas
 
 
@@ -402,21 +402,21 @@ def extract_areas_from_chars(page):
         row_chars.sort(key=lambda c: c['x0'])
         raw_text = decode_cid(''.join(c['text'] for c in row_chars))
         if re.search(r'Gross\s*Floor\s*Area', raw_text, re.IGNORECASE):
-            gross_areas = _parse_area_row(row_chars, raw_text)
+            gross_areas += _parse_area_row(row_chars, raw_text)
         elif re.search(r'Net\s*Floor\s*Area', raw_text, re.IGNORECASE):
-            net_areas = _parse_area_row(row_chars, raw_text)
+            net_areas += _parse_area_row(row_chars, raw_text)
     return gross_areas, net_areas
 
 
-def _run_extraction_from_captured(captured, pdf_path, page_index, unit_index, split_x, unit_label, floor_name_override, project_ref_override):
+def _run_extraction_from_captured(captured, pdf_path, page_index, unit_index, split_x, unit_label, floor_name_override, project_ref_override, system_type_hint=None):
     return extract_page(pdf_path, page_index,
                         unit_index=unit_index, split_x=split_x,
                         unit_label=unit_label, floor_name_override=floor_name_override,
                         project_ref_override=project_ref_override,
-                        _preloaded=captured)
+                        _preloaded=captured, system_type_hint=system_type_hint)
 
 
-def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label=None, floor_name_override=None, project_ref_override=None, _preloaded=None):
+def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label=None, floor_name_override=None, project_ref_override=None, _preloaded=None, system_type_hint=None):
     try:
         import pdfplumber
 
@@ -563,6 +563,9 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
         system_type = detect_system(raw_text, pdf_path, page_index)
         if not system_type:
             system_type = detect_system(_chars_text, pdf_path, page_index)
+        # Final fallback: use hint from scan (e.g. system detected on another page of same PDF)
+        if not system_type and system_type_hint:
+            system_type = system_type_hint
 
         pipe_size = "16mm"
         if '12mm' in raw_text and '16mm' not in raw_text:
@@ -749,19 +752,19 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
 
         gross_a2, net_a2 = [], []
         for line in raw_text.split('\n'):
-            if not gross_a2 and re.search(r'Gross.{0,5}Floor.{0,5}Area', line, re.IGNORECASE):
+            if re.search(r'Gross.{0,5}Floor.{0,5}Area', line, re.IGNORECASE):
                 vals = re.findall(r'(\d+\.?\d*)\s*m', line)
                 candidate = [float(v) for v in vals if 0 < float(v) < 500]
                 if candidate:
-                    gross_a2 = candidate
-            if not net_a2 and re.search(r'Net.{0,5}Floor.{0,5}Area', line, re.IGNORECASE):
+                    gross_a2 += candidate
+            if re.search(r'Net.{0,5}Floor.{0,5}Area', line, re.IGNORECASE):
                 vals = re.findall(r'(\d+\.?\d*)\s*m', line)
                 candidate = [float(v) for v in vals if 0 < float(v) < 500]
                 if candidate:
-                    net_a2 = candidate
+                    net_a2 += candidate
 
         gross_a1, net_a1 = [], []
-        if not gross_a2 and _page_chars:
+        if _page_chars:
             gross_a1, net_a1 = extract_areas_from_chars_data(_page_chars)
 
         gross_a3, net_a3 = [], []
@@ -802,13 +805,6 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
                 if n:
                     net_areas = n
                     break
-
-        _gross_sum = sum(gross_areas) if gross_areas else 0
-        if _gross_sum > 500 and _page_chars:
-            _g_alt, _n_alt = extract_areas_from_chars_data(_page_chars)
-            if _g_alt and sum(_g_alt) < _gross_sum:
-                gross_areas = _g_alt
-                net_areas = _n_alt if _n_alt else net_areas
 
         gross_total = round(sum(gross_areas), 1) if gross_areas else None
         net_total = round(sum(net_areas), 1) if net_areas else gross_total
@@ -988,6 +984,12 @@ def scan_pdf_pages(pdf_path):
             page_texts.append(raw)
         del reader
         gc.collect()
+
+        # Detect system type per page — also scan all pages to find a global hint
+        # so data-only pages (no schematic) can inherit system from layout pages
+        page_systems = [detect_system(raw, pdf_path, i) for i, raw in enumerate(page_texts)]
+        global_system = next((s for s in page_systems if s), None)
+
         pages = []
         for i, raw in enumerate(page_texts):
             floor_name = get_floor_name(raw) or "Page {}".format(i + 1)
@@ -1023,8 +1025,9 @@ def scan_pdf_pages(pdf_path):
                 "units":         units,
                 "split_x":       split_x,
                 "project_ref":   page_ref,
+                "system_hint":   page_systems[i] or global_system,
             })
-        return {"pages": pages, "total": len(pages)}
+        return {"pages": pages, "total": len(pages), "global_system": global_system}
     except Exception as e:
         return {"error": str(e)}
 
