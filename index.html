@@ -429,8 +429,8 @@ function renderDashboard(entries) {
     var statusBadge = e.status === 'complete'
       ? '<span style="color:var(--success);font-weight:600;">&#10003; Complete</span>'
       : e.status === 'partial'
-      ? '<span style="color:#b45309;font-weight:600;">&#9888; Partial</span>'
-      : '<span style="color:var(--success);font-weight:600;">&#10003; Complete</span>';
+      ? '<span style="color:#b45309;font-weight:600;">&#9888; Partial read</span>'
+      : '<span style="color:#b45309;font-weight:600;">&#9888; Partial read</span>';
     var warnings = (e.warnings && e.warnings.length) ? e.warnings.join('; ') : '—';
     html += '<tr><td>' + (e.ts||'') + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td>' + (e.project_ref||'') + '</td><td>' + (e.floor||'') + '</td><td>' + (e.system||'') + '</td><td>' + statusBadge + '</td><td style="font-size:11px;color:#92400e;">' + warnings + '</td></tr>';
   });
@@ -744,6 +744,7 @@ async function loadPDF(id, file) {
           applyData(id, data);
         } else {
           setStatus(id, '\u2713 Auto-filled from PDF \u2014 check before generating' + _methodNote, 'ok');
+          panels[id]._warnings = [];
           applyData(id, data);
         }
       } else {
@@ -760,7 +761,7 @@ async function loadPDF(id, file) {
   }
 }
 
-async function extractPage(id, file, pageIndex, unitIndex, splitX, unitLabel, floorNameOverride, projectRefOverride) {
+async function extractPage(id, file, pageIndex, unitIndex, splitX, unitLabel, floorNameOverride, projectRefOverride, systemHint) {
   var fd = new FormData();
   fd.append('pdf', file, file.name);
   fd.append('page_index', String(pageIndex));
@@ -769,6 +770,7 @@ async function extractPage(id, file, pageIndex, unitIndex, splitX, unitLabel, fl
   if (unitLabel) fd.append('unit_label', unitLabel);
   if (floorNameOverride) fd.append('floor_name_override', floorNameOverride);
   if (projectRefOverride) fd.append('project_ref_override', projectRefOverride);
+  if (systemHint) fd.append('system_type_hint', systemHint);
   try {
     var _ectl = new AbortController();
     var _etout = setTimeout(function(){ _ectl.abort(); }, 300000);
@@ -804,6 +806,7 @@ async function extractPage(id, file, pageIndex, unitIndex, splitX, unitLabel, fl
     } else {
       setStatus(id, '\u2713 Auto-filled from PDF \u2014 check before generating' + _buildMethodNote(data), 'ok');
       setProgressFile(file.name, 'done');
+      panels[id]._warnings = [];
     }
     applyData(id, data);
   } catch(e) {
@@ -988,7 +991,7 @@ async function spawnFloorPanels(id, file, selected) {
     var a = assignments[ai];
     var key = file.name + '::' + a.floor.floor_name + '::p' + a.panelId;
     try {
-      await extractPage(a.panelId, file, a.floor.page_index, null, null, null);
+      await extractPage(a.panelId, file, a.floor.page_index, null, null, null, null, null, a.floor.system_hint);
       progressMap[key] = 'done';
     } catch(e) {
       progressMap[key] = 'error';
@@ -1473,21 +1476,10 @@ function generateBOM(id) {
     '<div class="actions-row"><button class="btn-excel" onclick="exportExcel('+id+')">&#8595; Download Excel</button></div>' +
     conNote+castNote+'</div>';
 
-  // If all required fields are now filled, treat as complete regardless of initial warnings
-  var _warnings = [];
-  if (p._warnings && p._warnings.length > 0) {
-    // Re-check: if the fields that were warned about are now filled, clear them
-    var stillMissing = [];
-    p._warnings.forEach(function(w) {
-      if (w.indexOf('Loop lengths') > -1 && ll.length === 0) stillMissing.push(w);
-      else if (w.indexOf('Gross floor area') > -1 && gross <= 0) stillMissing.push(w);
-      else if (w.indexOf('Net floor area') > -1 && net <= 0) stillMissing.push(w);
-      else if (w.indexOf('System type') > -1 && !sys) stillMissing.push(w);
-    });
-    _warnings = stillMissing;
-  }
-  var _status = _warnings.length > 0 ? 'partial' : 'complete';
-  logBOM(ref || p.project_ref || '', p.floor_name || '', sys, _status, _warnings);
+  // Status reflects what the tool read, not what the user corrected
+  var _readWarnings = p._warnings || [];
+  var _status = _readWarnings.length > 0 ? 'partial' : 'complete';
+  logBOM(ref || p.project_ref || '', p.floor_name || '', sys, _status, _readWarnings);
 
   if(Object.values(panels).some(function(x){return x.bom&&x.bom.length>0;}))
     document.getElementById('promptBar').style.display='block';
