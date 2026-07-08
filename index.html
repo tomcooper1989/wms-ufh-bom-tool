@@ -377,15 +377,15 @@ function toUKTime(utcStr) {
 
 function renderDashboard(entries) {
   // Summary stats
-  var totalBoms = entries.length;
+  var totalBoms = entries.filter(function(e){ return !e.type || e.type !== "failure"; }).length;
   var userCounts = {};
-  entries.forEach(function(e) {
+  entries.filter(function(e){ return !e.type || e.type !== "failure"; }).forEach(function(e) {
     var u = e.user || 'Unknown';
     userCounts[u] = (userCounts[u] || 0) + 1;
   });
   var uniqueUsers = Object.keys(userCounts).length;
-  var today = new Date().toLocaleDateString('en-GB', {timeZone:'Europe/London'}).split('/').reverse().join('-');
-  var todayCount = entries.filter(function(e){ return e.ts && toUKTime(e.ts).startsWith(today); }).length;
+  var today = new Date().toLocaleDateString('en-GB', {timeZone:'Europe/London'}); // DD/MM/YYYY
+  var todayCount = entries.filter(function(e){ return !e.type || e.type !== 'failure'; }).filter(function(e){ return e.ts && toUKTime(e.ts).startsWith(today); }).length;
 
   // User summary rows sorted by count desc
   var userRows = Object.entries(userCounts).sort(function(a,b){ return b[1]-a[1]; });
@@ -416,20 +416,22 @@ function renderDashboard(entries) {
 
   if (completeFails.length) {
     html += '<p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#dc2626;margin-bottom:0.5rem;">&#10007; Complete read failures</p>';
-    html += '<table class="dash-table" style="margin-bottom:1.25rem;"><thead><tr><th>Date / Time</th><th>User</th><th>Filename</th><th>Reason</th><th></th></tr></thead><tbody>';
+    html += '<table class="dash-table" style="margin-bottom:1.25rem;"><thead><tr><th style="width:28px;"><input type="checkbox" onclick="toggleAllChecks(this)"></th><th>Date / Time</th><th>User</th><th>Filename</th><th>Reason</th><th></th></tr></thead><tbody>';
     completeFails.slice().reverse().forEach(function(e){
-      html += '<tr><td>' + toUKTime(e.ts) + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td style="font-size:11px;">' + (e.filename||'') + '</td><td style="font-size:11px;color:#92400e;">' + (e.reason||'') + '</td>' +
-        (e.saved_as ? '<td><button class="dash-btn" onclick="downloadFailure(\'' + e.saved_as + '\')">&#8595; Download</button></td>' : '<td>—</td>') + '</tr>';
+      var _fkey = (e.ts||'') + '||' + (e.user||'');
+      html += '<tr><td><input type="checkbox" class="dash-row-cb" value="' + _fkey + '" onchange="updateDeleteBtn()"></td><td>' + toUKTime(e.ts) + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td style="font-size:11px;">' + (e.filename||'') + '</td><td style="font-size:11px;color:#92400e;">' + (e.reason||'') + '</td>' +
+        (e.saved_as ? '<td><button class="dash-btn dash-dl-btn" data-file="' + e.saved_as + '">&#8595; Download</button></td>' : '<td>—</td>') + '</tr>';
     });
     html += '</tbody></table>';
   }
 
   if (partialFails.length) {
     html += '<p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#b45309;margin-bottom:0.5rem;">&#9888; Partial read failures</p>';
-    html += '<table class="dash-table" style="margin-bottom:1.25rem;"><thead><tr><th>Date / Time</th><th>User</th><th>Filename</th><th>Missing data</th><th></th></tr></thead><tbody>';
+    html += '<table class="dash-table" style="margin-bottom:1.25rem;"><thead><tr><th style="width:28px;"><input type="checkbox" onclick="toggleAllChecks(this)"></th><th>Date / Time</th><th>User</th><th>Filename</th><th>Missing data</th><th></th></tr></thead><tbody>';
     partialFails.slice().reverse().forEach(function(e){
-      html += '<tr><td>' + toUKTime(e.ts) + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td style="font-size:11px;">' + (e.filename||'') + '</td><td style="font-size:11px;color:#92400e;">' + (e.reason||'') + '</td>' +
-        (e.saved_as ? '<td><button class="dash-btn" onclick="downloadFailure(\'' + e.saved_as + '\')">&#8595; Download</button></td>' : '<td>—</td>') + '</tr>';
+      var _fkey = (e.ts||'') + '||' + (e.user||'');
+      html += '<tr><td><input type="checkbox" class="dash-row-cb" value="' + _fkey + '" onchange="updateDeleteBtn()"></td><td>' + toUKTime(e.ts) + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td style="font-size:11px;">' + (e.filename||'') + '</td><td style="font-size:11px;color:#92400e;">' + (e.reason||'') + '</td>' +
+        (e.saved_as ? '<td><button class="dash-btn dash-dl-btn" data-file="' + e.saved_as + '">&#8595; Download</button></td>' : '<td>—</td>') + '</tr>';
     });
     html += '</tbody></table>';
   }
@@ -489,6 +491,12 @@ async function deleteSelected() {
     alert('Could not connect to server');
   }
 }
+
+document.addEventListener('click', function(e) {
+  if (e.target && e.target.classList.contains('dash-dl-btn')) {
+    downloadFailure(e.target.getAttribute('data-file'));
+  }
+});
 
 async function downloadFailure(savedAs) {
   var pw = document.getElementById('dashPwInput').value;
