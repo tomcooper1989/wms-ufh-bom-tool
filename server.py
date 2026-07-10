@@ -288,6 +288,346 @@ def detect_system(raw_text, pdf_path, page_index):
     return None
 
 
+# Tokens used to count distinct systems within manifold "System" rows.
+# Ordered most-specific first: when a token matches it is consumed from the row
+# so a shorter token (e.g. bare 'ambideck') can't double-count the same text.
+SYSTEM_TOKENS = [
+    ('ambifloat',   'AmbiFloat10'),
+    ('ambitak',     'AmbiTak'),
+    ('ambideck20',  'AmbiDeck20'),
+    ('ambideck18',  'AmbiDeck18'),
+    ('ambideck',    'AmbiDeck18'),
+    ('overdeck',    'OverDeck20'),
+    ('ambiplate',   'AmbiPlate'),
+    ('castellated', 'AmbiCastellated'),
+    ('ambiduoclip', 'AmbiDuoClip'),
+    ('duoclip',     'AmbiDuoClip'),
+    ('cliprail',    'AmbiClip'),
+    ('ambiclip',    'AmbiClip'),
+    ('ambisolo',    'AmbiSolo'),
+    ('lofloor',     'AmbiLoFloor'),
+    ('jofloor',     'AmbiJoFloor'),
+]
+
+
+def _count_systems_in_row(low):
+    """Count system tokens in one space-stripped, lowercased System-row string."""
+    counts = {}
+    for token, sysname in SYSTEM_TOKENS:
+        n = low.count(token)
+        if n:
+            counts[sysname] = counts.get(sysname, 0) + n
+            low = low.replace(token, '')
+    return counts
+
+
+def detect_systems_from_chars(page_chars):
+    """Scan every 'System' row via char-level grouping and return a dict of
+    {system_name: total_column_count} across the page. Used to spot drawings that
+    mix more than one system (e.g. AmbiTak + AmbiFloat10 on the same floor)."""
+    if not page_chars:
+        return {}
+    from collections import defaultdict
+    rows = defaultdict(list)
+    for c in page_chars:
+        rows[round(c['top'] / 2) * 2].append(c)
+    total = {}
+    for y in sorted(rows):
+        rc = sorted(rows[y], key=lambda c: c['x0'])
+        low = decode_cid(''.join(c['text'] for c in rc)).lower().replace(' ', '')
+        if low.startswith('system'):
+            for s, n in _count_systems_in_row(low).items():
+                total[s] = total.get(s, 0) + n
+    return total
+
+
+def _is_drawing_only(raw_text):
+    """True when a page has no manifold-header, floor-area or loop-length rows —
+    i.e. it is a floor-plan drawing page with no data tables. Such pages carry no
+    BOM data and should be dropped from the floor list (they otherwise show up as
+    a duplicate, empty floor)."""
+    if re.search(r'Heat.{0,5}Required.{0,5}At.{0,5}Manifold|HeatRequiredAtManifold', raw_text, re.IGNORECASE):
+        return False
+    if re.search(r'(?:Gross|Net)\s*Floor\s*Area', raw_text, re.IGNORECASE):
+        return False
+    if re.search(r'Loop\s*Length|LoopLength', raw_text, re.IGNORECASE):
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Mixed-system splitting
+#
+# A single manifold can carry loops of more than one system (e.g. AmbiTak +
+# AmbiFloat10). The manifold table (the one with the Loop Length row) has one
+# column per loop and a bottom "System" row naming each loop's system. WMS lays
+# manifolds out two-per-band, so each Loop Length / System row can contain two
+# manifolds side by side plus drawing notes in the margin — hence the
+# segment-by-label parsing below rather than a naive grid read.
+# ---------------------------------------------------------------------------
+
+_MX_ROOM = re.compile(r'(\d{3})\s*\(')
+_MX_SIZE = re.compile(r'^(1[267])mm$')
+_MX_NUM3 = re.compile(r'^(\d{3})$')
+_MX_AREA = re.compile(r'(\d+\.\d+)\s*m')  # decimal value with an m/m² unit
+
+
+def _mx_sysname(s):
+    low = (s or '').lower().replace(' ', '').replace('-', '')
+    for tok, name in SYSTEM_TOKENS:
+        if tok in low:
+            return name
+    return None
+
+
+def _mx_rows(words, ytol=2.5):
+    from collections import defaultdict
+    rows = defaultdict(list)
+    for w in words:
+        rows[round(w['top'] / ytol) * ytol].append(w)
+    return {y: sorted(rows[y], key=lambda w: w['x0']) for y in sorted(rows)}
+
+
+def _mx_label(row):
+    return decode_cid(''.join(w['text'] for w in row)).lower().replace(' ', '')
+
+
+def _mx_cx(w):
+    return (w['x0'] + w['x1']) / 2
+
+
+def parse_manifold_loops_by_system(page):
+    """Parse every manifold table on a pdfplumber page into per-loop records tagged
+    with system and room. Returns (manifolds, loops) where manifolds is a list of
+    {'ports','pipe_size'} for each physical manifold and loops is a flat list of
+    {'len','sys','room','pipe_size'}."""
+    words = page.extract_words(x_tolerance=1.5, y_tolerance=2)
+    rows = _mx_rows(words)
+    ys = sorted(rows)
+
+    def label_starts(row, w1, w2):
+        return [row[i]['x0'] for i in range(len(row) - 1)
+                if decode_cid(row[i]['text']).strip().lower() == w1
+                and decode_cid(row[i + 1]['text']).strip().lower() == w2]
+
+    def loop_vals(row):
+        out = []
+        for i, w in enumerate(row):
+            t = decode_cid(w['text']).strip()
+            nxt = decode_cid(row[i + 1]['text']).strip() if i + 1 < len(row) else ''
+            if re.fullmatch(r'\d+', t) and nxt == 'm':
+                out.append((_mx_cx(w), int(t)))
+            elif re.fullmatch(r'\d+m', t):
+                out.append((_mx_cx(w), int(t[:-1])))
+        return out
+
+    manifolds = []
+    loops = []
+    for y in ys:
+        if not _mx_label(rows[y]).startswith('looplength'):
+            continue
+        starts = label_starts(rows[y], 'loop', 'length')
+        if not starts:
+            continue
+        bounds = starts + [10 ** 9]
+        vals = loop_vals(rows[y])
+        sys_row = next((rows[y2] for y2 in ys if 0 < y2 - y <= 60
+                        and 'system' in _mx_label(rows[y2]) and 'ambi' in _mx_label(rows[y2])), None)
+        room_row = next((rows[y2] for y2 in reversed(ys) if 0 < y - y2 <= 40
+                         and 'roomno' in _mx_label(rows[y2])), None)
+        size_row = next((rows[y2] for y2 in ys if 0 < y2 - y <= 45
+                         and 'pipesize' in _mx_label(rows[y2])), None)
+        for si in range(len(starts)):
+            lo, hi = bounds[si], bounds[si + 1]
+            seg = [(x, v) for x, v in vals if lo - 5 <= x < hi]
+            if not seg:
+                continue
+            centers = [x for x, _ in seg]
+
+            def nearest(x, _c=centers):
+                return min(range(len(_c)), key=lambda i: abs(_c[i] - x))
+
+            colsys = {}
+            if sys_row:
+                sw = [w for w in sys_row if lo - 5 <= _mx_cx(w) < hi]
+                counts = _count_systems_in_row(''.join(decode_cid(w['text']) for w in sw).lower().replace(' ', ''))
+                if len(counts) == 1:
+                    only = next(iter(counts))
+                    for i in range(len(centers)):
+                        colsys[i] = only
+                elif len(counts) > 1:
+                    for w in sw:
+                        sn = _mx_sysname(decode_cid(w['text']))
+                        if sn:
+                            colsys[nearest(_mx_cx(w))] = sn
+            colroom = {}
+            if room_row:
+                for w in room_row:
+                    if lo - 5 <= _mx_cx(w) < hi:
+                        m = _MX_ROOM.search(decode_cid(w['text']))
+                        if m:
+                            colroom[nearest(_mx_cx(w))] = m.group(1)
+            colsize = {}
+            if size_row:
+                for w in size_row:
+                    if lo - 5 <= _mx_cx(w) < hi:
+                        m = _MX_SIZE.match(decode_cid(w['text']).replace(' ', ''))
+                        if m:
+                            colsize[nearest(_mx_cx(w))] = m.group(0)
+            mf_index = len(manifolds)  # index this manifold will occupy
+            mf_loops = [{'len': v, 'sys': colsys.get(i), 'room': colroom.get(i),
+                         'pipe_size': colsize.get(i), 'mf': mf_index}
+                        for i, (x, v) in enumerate(seg)]
+            sizes = [l['pipe_size'] for l in mf_loops if l['pipe_size']]
+            manifolds.append({'ports': len(mf_loops),
+                              'pipe_size': (sizes[0] if sizes else '16mm')})
+            loops.extend(mf_loops)
+    return manifolds, loops
+
+
+def room_areas_from_page(page):
+    """Return {room_number: {'gross','net'}} from the output tables on a page."""
+    room_area = {}
+    try:
+        tables = page.extract_tables()
+    except Exception:
+        return room_area
+    for t in tables:
+        rr = [[decode_cid(str(c)).strip() if c else '' for c in row] for row in t]
+        numrow = next((r for r in rr if sum(1 for c in r[1:] if _MX_NUM3.match(c)) >= 2), None)
+        if not numrow:
+            continue
+        # area rows carry a decimal value with an m/m² unit (excludes finish
+        # values like 0.01, percentages, °C temperatures)
+        arearows = [r for r in rr if sum(1 for c in r[1:] if _MX_AREA.search(c)) >= 2]
+        if not arearows:
+            continue
+        net_r, gross_r = arearows[0], arearows[-1]
+
+        def av(row, j):
+            if j < len(row):
+                m = _MX_AREA.search(row[j])
+                if m:
+                    v = float(m.group(1))
+                    if 0 < v < 5000:
+                        return v
+            return None
+        for j, c in enumerate(numrow):
+            m = _MX_NUM3.match(c)
+            if not m:
+                continue
+            room_area.setdefault(m.group(1), {'net': av(net_r, j), 'gross': av(gross_r, j)})
+    return room_area
+
+
+def split_systems_on_page(pdf_path, page_index, total_gross, total_net,
+                          detected_primary, split_x=None, unit_index=None):
+    """Split a mixed-system page into per-system breakdowns. Areas use
+    total-minus-secondary: secondary systems' areas are read directly from their
+    rooms; the primary system gets the remainder of the reliable page total.
+    Returns {'systems': [...], 'manifolds': [...], 'warnings': [...]} or None."""
+    try:
+        import pdfplumber
+        with pdfplumber.open(pdf_path) as pdf:
+            page = pdf.pages[page_index]
+            if split_x is not None and unit_index is not None:
+                if unit_index == 0:
+                    page = page.crop((0, 0, split_x, page.height))
+                else:
+                    page = page.crop((split_x, 0, page.width, page.height))
+            manifolds, loops = parse_manifold_loops_by_system(page)
+            room_area = room_areas_from_page(page)
+    except Exception:
+        return None
+    if not loops:
+        return None
+
+    from collections import defaultdict
+    warnings = []
+    # loop-count sanity: how many loops did we fail to tag?
+    tagged = sum(1 for l in loops if l['sys'])
+    # Determine primary: the detected system, else the most-common tagged system.
+    counts = defaultdict(int)
+    for l in loops:
+        if l['sys']:
+            counts[l['sys']] += 1
+    if not counts:
+        return None
+    primary = detected_primary if detected_primary in counts else max(counts, key=counts.get)
+    # Untagged loops default to the primary system.
+    for l in loops:
+        if not l['sys']:
+            l['sys'] = primary
+
+    by_sys = defaultdict(lambda: {'loops': [], 'rooms': set(), 'sizes': set(), 'mf_pairs': []})
+    for l in loops:
+        by_sys[l['sys']]['loops'].append(l['len'])
+        by_sys[l['sys']]['mf_pairs'].append((l.get('mf', 0), l['len']))
+        if l['room']:
+            by_sys[l['sys']]['rooms'].add(l['room'])
+        if l['pipe_size']:
+            by_sys[l['sys']]['sizes'].add(l['pipe_size'])
+
+    if len(by_sys) < 2:
+        return None  # not actually mixed once parsed
+
+    def _grouped(mf_pairs):
+        """Order a system's loops by manifold and return (ordered_lengths,
+        loop-count-per-manifold) so the UI can group them under each manifold."""
+        from collections import OrderedDict
+        buckets = OrderedDict()
+        for mf, ln in sorted(mf_pairs, key=lambda t: t[0]):
+            buckets.setdefault(mf, []).append(ln)
+        ordered = [ln for mf in buckets for ln in buckets[mf]]
+        return ordered, [len(buckets[mf]) for mf in buckets]
+
+    secondaries = [s for s in by_sys if s != primary]
+    sec_gross = sec_net = 0.0
+    systems = []
+    for s in secondaries:
+        d = by_sys[s]
+        g = n = 0.0
+        missing = False
+        for r in d['rooms']:
+            ra = room_area.get(r)
+            if ra and ra.get('gross') is not None:
+                g += ra['gross']
+                n += (ra['net'] if ra.get('net') is not None else ra['gross'])
+            else:
+                missing = True
+        if missing or not d['rooms']:
+            warnings.append("Could not read the {} area automatically — enter it manually".format(s))
+        sec_gross += g
+        sec_net += n
+        _ord, _mfl = _grouped(d['mf_pairs'])
+        systems.append({
+            'system_type': s,
+            'gross': round(g, 1) if g else None,
+            'net': round(n, 1) if n else None,
+            'loops': _ord,
+            'manifold_loops': _mfl,
+            'pipe_size': (sorted(d['sizes'])[0] if d['sizes'] else '16mm'),
+            'rooms': sorted(d['rooms']),
+        })
+
+    # Primary gets the remainder of the reliable page total.
+    prim = by_sys[primary]
+    prim_gross = round((total_gross - sec_gross), 1) if total_gross else None
+    prim_net = round((total_net - sec_net), 1) if total_net else prim_gross
+    _pord, _pmfl = _grouped(prim['mf_pairs'])
+    systems.insert(0, {
+        'system_type': primary,
+        'gross': prim_gross,
+        'net': prim_net,
+        'loops': _pord,
+        'manifold_loops': _pmfl,
+        'pipe_size': (sorted(prim['sizes'])[0] if prim['sizes'] else '16mm'),
+        'rooms': sorted(prim['rooms']),
+    })
+
+    return {'systems': systems, 'manifolds': manifolds, 'warnings': warnings}
+
+
 def _extract_values_from_chars(char_list):
     if not char_list:
         return []
@@ -566,6 +906,21 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
         # Final fallback: use hint from scan (e.g. system detected on another page of same PDF)
         if not system_type and system_type_hint:
             system_type = system_type_hint
+
+        # Multi-system detection — scan every "System" row for distinct systems so
+        # mixed drawings (e.g. AmbiTak + AmbiFloat10 on the same floor) don't silently
+        # drop the secondary system's rooms. Primary stays as detected above.
+        secondary_systems = []
+        try:
+            _sys_counts = detect_systems_from_chars(_page_chars_unit)
+            if len(_sys_counts) > 1:
+                _ordered = sorted(_sys_counts.items(), key=lambda kv: kv[1], reverse=True)
+                _primary = system_type if system_type in _sys_counts else _ordered[0][0]
+                if not system_type:
+                    system_type = _primary
+                secondary_systems = [s for s, _ in _ordered if s != _primary]
+        except Exception:
+            secondary_systems = []
 
         pipe_size = "16mm"
         if '12mm' in raw_text and '16mm' not in raw_text:
@@ -900,6 +1255,20 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
             except Exception:
                 pass
 
+        # Mixed-system split — when more than one system was detected, parse the
+        # manifold tables per-loop and produce a per-system breakdown so the UI can
+        # pre-fill each system's area and loops. Only runs for mixed drawings.
+        systems = []
+        physical_manifolds = []
+        split_warnings = []
+        if secondary_systems:
+            _split = split_systems_on_page(pdf_path, page_index, gross_total, net_total,
+                                           system_type, split_x=split_x, unit_index=unit_index)
+            if _split:
+                systems = _split['systems']
+                physical_manifolds = _split['manifolds']
+                split_warnings = _split.get('warnings', [])
+
         warnings = []
         if not loops:
             warnings.append("Loop lengths could not be read — enter manually")
@@ -911,6 +1280,17 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
             warnings.append("Net floor area could not be read — enter manually")
         if not system_type:
             warnings.append("System type not detected — select manually")
+        if secondary_systems:
+            if systems:
+                warnings.append(
+                    "Mixed systems on this drawing: {} — each system has been split out below, "
+                    "please check the areas and loop lengths before generating".format(
+                        ' + '.join(s['system_type'] for s in systems)))
+            else:
+                warnings.append(
+                    "Mixed systems on this drawing: {} + {} — could not split automatically, "
+                    "add the second system manually".format(system_type, ' + '.join(secondary_systems)))
+            warnings.extend(split_warnings)
         if not project_ref:
             warnings.append("Project reference not found — enter manually")
         if num_manifolds > 1 and len(manifold_loops) != num_manifolds:
@@ -920,6 +1300,9 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
             "floor_name":     floor_name,
             "drawing_title":  drawing_title,
             "system_type":    system_type,
+            "secondary_systems": secondary_systems,
+            "systems":        systems,
+            "manifolds":      physical_manifolds,
             "project_ref":    project_ref,
             "num_manifolds":  num_manifolds,
             "manifold_loops": manifold_loops,
@@ -1048,7 +1431,13 @@ def scan_pdf_pages(pdf_path):
                 "split_x":       split_x,
                 "project_ref":   page_ref,
                 "system_hint":   page_systems[i] or global_system,
+                "drawing_only":  _is_drawing_only(raw),
             })
+        # Drop floor-plan drawing pages that carry no data tables — but only if at
+        # least one real table page remains, so we never return an empty list.
+        real_pages = [p for p in pages if not p['drawing_only']]
+        if real_pages:
+            pages = real_pages
         return {"pages": pages, "total": len(pages), "global_system": global_system}
     except Exception as e:
         return {"error": str(e)}
@@ -1074,12 +1463,19 @@ def scan_and_extract(pdf_path):
                     "units": units,
                     "split_x": split_x,
                     "project_ref": "",
+                    "drawing_only": _is_drawing_only(raw),
                 })
+            # Drop floor-plan drawing pages with no data tables — but keep at least
+            # one page so we never return an empty floor list.
+            real_pages = [p for p in pages_info if not p['drawing_only']]
+            if real_pages:
+                pages_info = real_pages
             scan_result = {"pages": pages_info, "total": len(pages_info)}
             if (len(pages_info) == 1 and
                     not pages_info[0].get('units') and
                     not pages_info[0].get('unreadable')):
-                page = pdf.pages[0]
+                _pi = pages_info[0]['page_index']
+                page = pdf.pages[_pi]
                 w, h = page.width, page.height
                 raw_text = decode_cid(page.extract_text(layout=False, x_tolerance=3, y_tolerance=3) or "")
                 all_tables = page.extract_tables()
@@ -1094,11 +1490,13 @@ def scan_and_extract(pdf_path):
                     '_page_chars_unit': _all_chars, 'w': w, 'h': h,
                     '_has_loop_length': _has_loop_length,
                 }
+                _extract_index = _pi
             else:
                 _captured = None
+                _extract_index = 0
         if _captured:
             scan_result['extract'] = _run_extraction_from_captured(
-                _captured, pdf_path, 0, None, None, None, None, None
+                _captured, pdf_path, _extract_index, None, None, None, None, None
             )
         return scan_result
     except Exception as e:

@@ -1103,6 +1103,25 @@ function applyData(id, data) {
   if (data.floor_name) p.floor_name = data.floor_name;
   if (data.project_ref) p.project_ref = data.project_ref;
 
+  // Mixed-system drawing: the server split the page into per-system breakdowns.
+  // Drive the primary panel from systems[0] and pre-fill the extra system(s).
+  var _extraSystems = [];
+  if (data.systems && data.systems.length >= 2) {
+    var prim = data.systems[0];
+    data.system_type = prim.system_type;
+    data.gross_area  = prim.gross;
+    data.net_area    = prim.net;
+    data.loops       = prim.loops;
+    // Group this system's loops under each physical manifold it uses.
+    data.manifold_loops = (prim.manifold_loops && prim.manifold_loops.length)
+                          ? prim.manifold_loops : [prim.loops.length];
+    data.num_manifolds = data.manifold_loops.length;
+    p.system_type = prim.system_type;
+    p.physicalManifolds = data.manifolds || [];   // shared hardware, counted once
+    p.isMixed = true;
+    _extraSystems = data.systems.slice(1);
+  }
+
   if (data.loops && data.loops.length > 0)
     p.loops = data.loops.map(function(l, i){ return {id: i+1, len: l}; });
   if (data.num_manifolds) {
@@ -1111,6 +1130,33 @@ function applyData(id, data) {
     p.manifoldLoops = p.manifoldLoops.slice(0, data.num_manifolds);
   }
   renderForm(id, data);
+
+  if (_extraSystems.length) {
+    var sec = _extraSystems[0];
+    p.sys2 = {
+      system_type: sec.system_type,
+      gross: (sec.gross != null ? sec.gross : ''),
+      net:   (sec.net != null ? sec.net : ''),
+      loops: (sec.loops && sec.loops.length)
+             ? sec.loops.map(function(l, i){ return {id: i+1, len: l}; })
+             : [{id:1, len:''}],
+      manifoldLoops: (sec.manifold_loops && sec.manifold_loops.length)
+             ? sec.manifold_loops.slice() : [ (sec.loops && sec.loops.length) || 1 ],
+      answers: {}
+    };
+    var addBtn = document.getElementById('btn-addsys2-' + id);
+    if (addBtn) addBtn.textContent = '- Remove second system';
+    renderSys2(id);
+    // 3+ systems: the server warning lists the extras; only the first is
+    // auto-filled here (add further systems manually with "Add second system").
+  } else if (data.secondary_systems && data.secondary_systems.length) {
+    // Detected mixed but no split data — open a blank second-system panel.
+    p.sys2 = { system_type: data.secondary_systems[0], gross: '', net: '',
+               loops: [{id:1, len:''}], manifoldLoops: [1], answers: {} };
+    var addBtn2 = document.getElementById('btn-addsys2-' + id);
+    if (addBtn2) addBtn2.textContent = '- Remove second system';
+    renderSys2(id);
+  }
 }
 
 function renderForm(id, data) {
@@ -1132,6 +1178,26 @@ function renderForm(id, data) {
     mfHtml += '<div class="field"><label>Loops on manifold ' + (i+1) + '</label>' +
       '<input type="number" min="1" max="20" value="' + (p.manifoldLoops[i]||1) + '" onchange="panels[' + id + '].manifoldLoops[' + i + ']=parseInt(this.value)||1" /></div>';
   }
+  // Mixed drawings: a manifold is shared across systems, so instead of editable
+  // per-system manifold counts (which would misread as e.g. one 44-port manifold)
+  // show the real physical manifolds read-only. Hardware is counted from these.
+  var manifoldsHtml;
+  if (p.isMixed && p.physicalManifolds && p.physicalManifolds.length) {
+    var _mfs = p.physicalManifolds;
+    manifoldsHtml =
+      '<p class="sec-label">Manifolds</p>' +
+      '<div class="info-box">This floor has <strong>' + _mfs.length + ' physical manifold' +
+      (_mfs.length !== 1 ? 's' : '') + '</strong> shared across both systems: ' +
+      _mfs.map(function(m){ return m.ports + '-port'; }).join(', ') +
+      '. Hardware is counted once from these. The ' + p.loops.length +
+      ' loops below are this system’s loops, grouped by manifold.</div>';
+  } else {
+    manifoldsHtml =
+      '<p class="sec-label">Manifolds</p>' +
+      '<div class="field" style="max-width:130px;margin-bottom:6px;"><label>Number of manifolds</label>' +
+        '<input type="number" min="1" max="10" value="' + nMf + '" onchange="updateMf(' + id + ',this.value)" /></div>' +
+      '<div class="field-grid" id="mf-' + id + '">' + mfHtml + '</div>';
+  }
   var formEl = document.getElementById('form-' + id);
   if (!formEl) return;
   formEl.innerHTML =
@@ -1148,10 +1214,7 @@ function renderForm(id, data) {
       '<div class="field"><label>Net area (m&sup2;)</label>' +
         '<input type="number" id="net-' + id + '" value="' + (data.net_area||'') + '" min="0" step="0.1" placeholder="0.0" /></div>' +
     '</div>' +
-    '<p class="sec-label">Manifolds</p>' +
-    '<div class="field" style="max-width:130px;margin-bottom:6px;"><label>Number of manifolds</label>' +
-      '<input type="number" min="1" max="10" value="' + nMf + '" onchange="updateMf(' + id + ',this.value)" /></div>' +
-    '<div class="field-grid" id="mf-' + id + '">' + mfHtml + '</div>' +
+    manifoldsHtml +
     '<p class="sec-label">Loop lengths (m)</p>' +
     '<div id="loops-' + id + '"></div>' +
     '<button class="btn-add" onclick="addLoop(' + id + ')">+ Add loop</button>' +
@@ -1437,7 +1500,8 @@ function qb2(id, key, q, opts) {
   return '<div class="q-card"><p>' + q + '</p><div class="q-opts">' + btns + '</div></div>';
 }
 
-function calcBOM(id, src, isSys2) {
+function calcBOM(id, src, isSys2, includeManifolds) {
+  if (includeManifolds === undefined) includeManifolds = true;
   var bom = [];
   var gross = parseFloat(isSys2 ? src.gross : document.getElementById('gross-'+id).value) || 0;
   var net = parseFloat(isSys2 ? src.net : document.getElementById('net-'+id).value) || 0;
@@ -1451,7 +1515,7 @@ function calcBOM(id, src, isSys2) {
   var totMfL=src.manifoldLoops.reduce(function(a,b){return a+b;},0);
 
   function dpm(){var a=src.answers.dpm;if(a==='Separating Layer only'||a==='Both DPM and Separating Layer')bom.push({pr:'Separating Layer',c:'46699',s:'DPM Black 500 Gauge (200m\u00b2 per Roll)',q:1});if(a==='DPM only'||a==='Both DPM and Separating Layer')bom.push({pr:'DPM 1200 Gauge',c:'46701',s:'DPM Black 1200 Gauge (100m\u00b2 per Roll)',q:ceil(gross,80)});}
-  function mfs(sz){src.manifoldLoops.forEach(function(lps,i){var m=mfc(lps,sz);bom.push({pr:'Manifold'+(nMf>1?' (M'+(i+1)+')':''),c:m.code,s:m.desc,q:1});});}
+  function mfs(sz){if(includeManifolds===false)return;src.manifoldLoops.forEach(function(lps,i){var m=mfc(lps,sz);bom.push({pr:'Manifold'+(nMf>1?' (M'+(i+1)+')':''),c:m.code,s:m.desc,q:1});});}
   function p16(){var c=pipe16(tm);if(c.c500>0)bom.push({pr:'16mm AmbiFlex Pipe',c:'30500',s:'16mm AmbiFlex Pipe \u2013 500m Coil',q:c.c500});if(c.c240>0)bom.push({pr:'16mm AmbiFlex Pipe',c:'30240',s:'16mm AmbiFlex Pipe \u2013 240m Coil',q:c.c240});if(c.c120>0)bom.push({pr:'16mm AmbiFlex Pipe',c:'30120',s:'16mm AmbiFlex Pipe \u2013 120m Coil',q:c.c120});}
   function p12(){var c=pipe12(tm);if(c.c500>0)bom.push({pr:'12mm AmbiFlex Pipe',c:'30050',s:'12mm AmbiFlex Pipe \u2013 500m Coil',q:c.c500});if(c.c200>0)bom.push({pr:'12mm AmbiFlex Pipe',c:'30020',s:'12mm AmbiFlex Pipe \u2013 200m Coil',q:c.c200});if(c.c100>0)bom.push({pr:'12mm AmbiFlex Pipe',c:'39000',s:'12mm AmbiFlex Pipe \u2013 100m Coil',q:c.c100});}
   function tape(){bom.push({pr:'Cloth Tape',c:'92002',s:'Black Cloth Tape 70mm \u00d7 50m',q:ceil(gross,15)});}
@@ -1505,7 +1569,17 @@ function generateBOM(id) {
   if((sys==='AmbiDeck20'||sys==='AmbiDeck18')&&!p.answers.sub){out.innerHTML=er('Please select subfloor type.');return;}
   if(['AmbiTak','AmbiDuoClip','AmbiClip','AmbiCastellated'].indexOf(sys)>-1&&!p.answers.insulation){out.innerHTML=er('Please answer the insulation question.');return;}
 
-  var bom = calcBOM(id, p, false);
+  // Mixed drawings: manifold hardware is one physical manifold regardless of how
+  // many systems its loops belong to, so per-system calcs omit manifolds and we
+  // add the physical manifolds once from the parsed port counts.
+  var _mixed = p.isMixed && p.physicalManifolds && p.physicalManifolds.length;
+  var bom = calcBOM(id, p, false, !_mixed);
+  if (_mixed) {
+    p.physicalManifolds.forEach(function(m, i){
+      var mc = mfc(m.ports, m.pipe_size || '16mm');
+      bom.push({pr:'Manifold'+(p.physicalManifolds.length>1?' (M'+(i+1)+')':''), c:mc.code, s:mc.desc, q:1});
+    });
+  }
 
   var names={AmbiTak:'AmbiTak (Tacker)',AmbiClip:'AmbiClip / Cliprail',AmbiDuoClip:'AmbiDuoClip',AmbiPlate:'AmbiPlate Pipe',AmbiLoFloor:'AmbiLoFloor',AmbiJoFloor:'AmbiJoFloor',OverDeck20:'OverDeck 20',AmbiDeck20:'AmbiDeck 20 Pro',AmbiDeck18:'AmbiDeck 18',AmbiCastellated:'AmbiCastellated',AmbiSolo:'AmbiSolo',AmbiFloat10:'AmbiFloat 10'};
   var conNote=((sys==='AmbiDeck20'||sys==='AmbiDeck18')&&p.answers.sub==='Concrete')?'<div class="info-box">Note: AmbiBond included \u2014 concrete subfloor selected.</div>':'';
@@ -1516,7 +1590,7 @@ function generateBOM(id) {
   var bom2 = [];
   var sys2html = '';
   if (p.sys2 && p.sys2.system_type) {
-    bom2 = calcBOM(id, p.sys2, true);
+    bom2 = calcBOM(id, p.sys2, true, !_mixed);
     p.bom = bom.concat(bom2);
     if (bom2.length) {
       sys2html = '<p class="detect-line" style="margin-top:1rem;padding-top:0.75rem;border-top:1px dashed var(--border-strong);">Second system: ' + (names[p.sys2.system_type]||p.sys2.system_type) + '</p>' +
