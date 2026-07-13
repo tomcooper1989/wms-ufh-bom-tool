@@ -69,14 +69,37 @@ against redeploys, not against an accidental delete from the dashboard.
 
 ## Restoring
 
+`/import_entries` skips entries already present, so running it twice is safe. **But the
+POST body must be sent as explicit UTF-8 bytes**, or the restore will create duplicates:
+
 ```powershell
 $backup = Get-Content .\backups\bom_usage_backup_<timestamp>.json -Raw | ConvertFrom-Json
-$body = @{ password = '<DASHBOARD_PASSWORD>'; entries = $backup.entries } | ConvertTo-Json -Depth 10
+$json  = @{ password = '<DASHBOARD_PASSWORD>'; entries = $backup.entries } | ConvertTo-Json -Depth 10
+$bytes = [System.Text.Encoding]::UTF8.GetBytes($json)          # <-- required
 Invoke-RestMethod -Uri 'https://web-production-c8487.up.railway.app/import_entries' `
-  -Method Post -ContentType 'application/json' -Body $body
+  -Method Post -ContentType 'application/json; charset=utf-8' -Body $bytes
 ```
 
-`/import_entries` skips entries already present, so running it twice is safe.
+Windows PowerShell 5.1 does not encode a *string* body as UTF-8 for `application/json`.
+Failure entries contain em dashes (`could not be read — enter manually`), which get
+mangled to `-` in transit. The import dedupes on exact content, so a mangled entry does
+not match the original, and you get a near-identical duplicate instead of a no-op. This
+happened for real on 2026-07-13 and had to be unpicked by hand.
+
+Sanity check after any restore - all three must hold:
+
+```powershell
+$now = @((Invoke-RestMethod -Uri "$base/dashboard_data" -Method Post `
+  -ContentType 'application/json' -Body (@{password=$pw}|ConvertTo-Json)).entries)
+$now.Count                                                              # expected total
+@($now | Where-Object { $_.reason -and $_.reason.Contains('read - enter') }).Count  # must be 0
+@($now | Group-Object { $_ | ConvertTo-Json -Compress } | Where-Object Count -gt 1).Count  # must be 0
+```
+
+Note `/delete_entries` keys on `ts||user`, which is **not unique** - two BOMs by the same
+user in the same second share a key, as do a BOM and its failure entry. Deleting a key
+removes every entry that matches it. To remove one of a set, delete the key and re-import
+the ones you want to keep.
 
 ## Unrelated issue found during the investigation
 
