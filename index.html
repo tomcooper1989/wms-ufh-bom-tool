@@ -1279,6 +1279,15 @@ function renderLoops(id) {
   el.innerHTML = html;
 }
 
+function pipeSupplierCard(sel, onchange){
+  sel = sel || 'AmbiFlex';
+  return '<div class="q-card"><p>16mm pipe supplier</p><div class="q-opts">' +
+    '<select onchange="' + onchange + '" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:var(--radius);font-size:13px;">' +
+    '<option value="AmbiFlex"' + (sel==='AmbiFlex'?' selected':'') + '>AmbiFlex® P16 (default)</option>' +
+    '<option value="TraffiPipe"' + (sel==='TraffiPipe'?' selected':'') + '>TraffiPipe</option>' +
+    '</select></div></div>';
+}
+
 function renderQs(id) {
   var sysEl = document.getElementById('sys-' + id);
   if (!sysEl) return;
@@ -1287,6 +1296,8 @@ function renderQs(id) {
   var s = document.getElementById('qs-' + id);
   if (!s) return;
   var h = '';
+  if (PIPE16_SYSTEMS.indexOf(sys) > -1)
+    h += pipeSupplierCard(p.answers.pipe16, 'panels[' + id + '].answers.pipe16=this.value');
   if (['AmbiTak','AmbiDuoClip','AmbiCastellated','AmbiSolo'].indexOf(sys) > -1)
     h += qb(id,'dpm','DPM, Separating Layer, or both?',['Neither','DPM only','Separating Layer only','Both DPM and Separating Layer']);
   if (sys === 'AmbiTak') h += qb(id,'clips','40mm or 60mm clips?',['40mm','60mm']);
@@ -1472,6 +1483,8 @@ function renderSys2Qs(id) {
   var s = document.getElementById('sys2qs-' + id);
   if (!s) return;
   var h = '';
+  if (PIPE16_SYSTEMS.indexOf(sys) > -1)
+    h += pipeSupplierCard(panels[id].sys2.answers.pipe16, 'panels[' + id + '].sys2.answers.pipe16=this.value');
   if (['AmbiTak','AmbiDuoClip','AmbiCastellated','AmbiSolo'].indexOf(sys) > -1)
     h += qb2(id,'dpm','DPM, Separating Layer, or both?',['Neither','DPM only','Separating Layer only','Both DPM and Separating Layer']);
   if (sys === 'AmbiTak') h += qb2(id,'clips','40mm or 60mm clips?',['40mm','60mm']);
@@ -1502,13 +1515,27 @@ function qb2(id, key, q, opts) {
   return '<div class="q-card"><p>' + q + '</p><div class="q-opts">' + btns + '</div></div>';
 }
 
+// 16mm pipe products by supplier — same coil rationale, different codes.
+var PIPE16_PRODUCTS = {
+  AmbiFlex: { name:'16mm AmbiFlex Pipe',
+    c500:{c:'40220',s:'AmbiFlex® P16 – 16mm UFH Pipe, 5 Layer with Oxygen Barrier – 500m'},
+    c240:{c:'40210',s:'AmbiFlex® P16 – 16mm UFH Pipe, 5 Layer with Oxygen Barrier – 240m'},
+    c120:{c:'40200',s:'AmbiFlex® P16 – 16mm UFH Pipe, 5 Layer with Oxygen Barrier – 120m'} },
+  TraffiPipe: { name:'16mm TraffiPipe',
+    c500:{c:'40332',s:'TraffiPipe 16mm UFH Pipe – 500m'},
+    c240:{c:'40331',s:'TraffiPipe 16mm UFH Pipe – 240m'},
+    c120:{c:'40330',s:'TraffiPipe 16mm UFH Pipe – 120m'} }
+};
+var PIPE16_SYSTEMS = ['AmbiTak','AmbiClip','AmbiDuoClip','AmbiPlate','OverDeck20','AmbiDeck20','AmbiCastellated','AmbiFloat10'];
+
 function calcBOM(id, src, isSys2, includeManifolds) {
   if (includeManifolds === undefined) includeManifolds = true;
   var bom = [];
   var gross = parseFloat(isSys2 ? src.gross : document.getElementById('gross-'+id).value) || 0;
   var net = parseFloat(isSys2 ? src.net : document.getElementById('net-'+id).value) || 0;
+  var area = gross > 0 ? gross : net;   // fall back to net when gross is blank
   var ll = src.loops.map(function(l){return parseFloat(l.len);}).filter(function(v){return !isNaN(v)&&v>0;});
-  if (!ll.length || gross <= 0) return bom;
+  if (!ll.length || area <= 0) return bom;
   var sys = src.system_type || (isSys2 ? '' : (document.getElementById('sys-'+id) ? document.getElementById('sys-'+id).value : ''));
   if (!sys) return bom;
   var totalL=ll.reduce(function(a,b){return a+b;},0);
@@ -1518,15 +1545,17 @@ function calcBOM(id, src, isSys2, includeManifolds) {
 
   function dpm(){var a=src.answers.dpm;if(a==='Separating Layer only'||a==='Both DPM and Separating Layer')bom.push({pr:'Separating Layer',c:'46699',s:'DPM Black 500 Gauge (200m\u00b2 per Roll)',q:1});if(a==='DPM only'||a==='Both DPM and Separating Layer')bom.push({pr:'DPM 1200 Gauge',c:'46701',s:'DPM Black 1200 Gauge (100m\u00b2 per Roll)',q:ceil(gross,80)});}
   function mfs(sz){if(includeManifolds===false)return;src.manifoldLoops.forEach(function(lps,i){var m=mfc(lps,sz);bom.push({pr:'Manifold'+(nMf>1?' (M'+(i+1)+')':''),c:m.code,s:m.desc,q:1});});}
-  function p16(){var c=pipe16(tm);if(c.c500>0)bom.push({pr:'16mm AmbiFlex Pipe',c:'30500',s:'16mm AmbiFlex Pipe \u2013 500m Coil',q:c.c500});if(c.c240>0)bom.push({pr:'16mm AmbiFlex Pipe',c:'30240',s:'16mm AmbiFlex Pipe \u2013 240m Coil',q:c.c240});if(c.c120>0)bom.push({pr:'16mm AmbiFlex Pipe',c:'30120',s:'16mm AmbiFlex Pipe \u2013 120m Coil',q:c.c120});}
+  function p16(){var c=pipe16(tm);var P=PIPE16_PRODUCTS[src.answers.pipe16]||PIPE16_PRODUCTS.AmbiFlex;if(c.c500>0)bom.push({pr:P.name,c:P.c500.c,s:P.c500.s,q:c.c500});if(c.c240>0)bom.push({pr:P.name,c:P.c240.c,s:P.c240.s,q:c.c240});if(c.c120>0)bom.push({pr:P.name,c:P.c120.c,s:P.c120.s,q:c.c120});}
   function p12(){var c=pipe12(tm);if(c.c500>0)bom.push({pr:'12mm AmbiFlex Pipe',c:'30050',s:'12mm AmbiFlex Pipe \u2013 500m Coil',q:c.c500});if(c.c200>0)bom.push({pr:'12mm AmbiFlex Pipe',c:'30020',s:'12mm AmbiFlex Pipe \u2013 200m Coil',q:c.c200});if(c.c100>0)bom.push({pr:'12mm AmbiFlex Pipe',c:'39000',s:'12mm AmbiFlex Pipe \u2013 100m Coil',q:c.c100});}
-  function tape(){bom.push({pr:'Cloth Tape',c:'92002',s:'Black Cloth Tape 70mm \u00d7 50m',q:ceil(gross,15)});}
-  function border(){bom.push({pr:'Border Edge Insulation',c:'41621',s:'Border Edge Insulation \u2013 Non Skirted',q:ceil(gross,35)});}
+  function tape(){bom.push({pr:'Cloth Tape',c:'92002',s:'Black Cloth Tape 70mm \u00d7 50m',q:ceil(area,15)});}
+  function border(){bom.push({pr:'Border Edge Insulation',c:'41621',s:'Border Edge Insulation \u2013 Non Skirted',q:ceil(area,35)});}
   function insulation(){if(src.answers.insulation==='Yes'){var boards=Math.ceil((gross*1.1)/2.88);bom.push({pr:'Insulation Board',c:'',s:'Insulation Board \u2013 1200\u00d72400mm (2.88m\u00b2/board) \u2013 qty includes 10% wastage',q:boards});}}
+  // Tail tape: per manifold by size \u2014 2\u20133 port: 2 rolls, 4\u20137 port: 3, 8+ port: 4.
+  function tailtape(){var rolls=src.manifoldLoops.reduce(function(t,p){return t+(p>=8?4:(p>=4?3:2));},0);bom.push({pr:'Tail Tape',c:'46810',s:'Tail Tape \u2013 rolls per manifold (2\u20133 port: 2, 4\u20137: 3, 8+: 4)',q:rolls});}
 
-  if(sys==='AmbiTak'){dpm();p16();mfs('16mm');var sc=src.answers.clips==='40mm'?{pr:'40mm Non-Stick SpeedClips (300 pcs)',c:'41531',s:'40mm Non-Stick SpeedClips \u2013 300pcs'}:{pr:'60mm Non-Stick SpeedClips (300 pcs)',c:'41551',s:'60mm Non-Stick SpeedClips \u2013 300pcs'};bom.push({pr:sc.pr,c:sc.c,s:sc.s,q:ceil(totalL*4,300)});bom.push({pr:'Red Clips (50mm)',c:'41506',s:'Red Clips 50mm (Box)',q:Math.max(1,ceil(net,50))});border();tape();insulation();}
-  else if(sys==='AmbiClip'){p16();mfs('16mm');bom.push({pr:'Clip Rail',c:'',s:'Clip Rail (m)',q:Math.ceil(net)});bom.push({pr:'Red Clips (50mm)',c:'41506',s:'Red Clips 50mm (Box)',q:Math.max(1,ceil(net,50))});bom.push({pr:'Black Clips (40mm)',c:'41530',s:'Black Clips 40mm (Box)',q:Math.ceil(totMfL*1.2)});bom.push({pr:'Tail Tape',c:'46810',s:'Tail Tape \u2013 1 roll per loop',q:ll.length});border();tape();insulation();}
-  else if(sys==='AmbiDuoClip'){dpm();p16();mfs('16mm');bom.push({pr:'DuoClip Rail',c:'',s:'DuoClip Rail (m)',q:ceil(net,2)});bom.push({pr:'Red Clips (50mm)',c:'41506',s:'Red Clips 50mm (Box)',q:Math.max(1,ceil(net,50))});bom.push({pr:'Black Clips (40mm)',c:'41530',s:'Black Clips 40mm (Box)',q:Math.ceil(totMfL*1.2)});bom.push({pr:'Tail Tape',c:'46810',s:'Tail Tape \u2013 1 roll per loop',q:ll.length});border();tape();insulation();}
+  if(sys==='AmbiTak'){dpm();p16();mfs('16mm');var sc=src.answers.clips==='40mm'?{pr:'40mm Non-Stick SpeedClips (300 pcs)',c:'41531',s:'40mm Non-Stick SpeedClips \u2013 300pcs'}:{pr:'60mm Non-Stick SpeedClips (300 pcs)',c:'41551',s:'60mm Non-Stick SpeedClips \u2013 300pcs'};bom.push({pr:sc.pr,c:sc.c,s:sc.s,q:ceil(totalL*4,300)});bom.push({pr:'Red Clips (50mm)',c:'41506',s:'Red Clips 50mm (Box)',q:Math.max(1,ceil(net,50))});tailtape();border();tape();insulation();}
+  else if(sys==='AmbiClip'){p16();mfs('16mm');bom.push({pr:'Clip Rail',c:'',s:'Clip Rail (m)',q:Math.ceil(net)});bom.push({pr:'Red Clips (50mm)',c:'41506',s:'Red Clips 50mm (Box)',q:Math.max(1,ceil(net,50))});bom.push({pr:'Black Clips (40mm)',c:'41530',s:'Black Clips 40mm (Box)',q:Math.ceil(totMfL*1.2)});tailtape();border();tape();insulation();}
+  else if(sys==='AmbiDuoClip'){dpm();p16();mfs('16mm');bom.push({pr:'DuoClip Rail',c:'',s:'DuoClip Rail (m)',q:ceil(net,2)});bom.push({pr:'Red Clips (50mm)',c:'41506',s:'Red Clips 50mm (Box)',q:Math.max(1,ceil(net,50))});bom.push({pr:'Black Clips (40mm)',c:'41530',s:'Black Clips 40mm (Box)',q:Math.ceil(totMfL*1.2)});tailtape();border();tape();insulation();}
   else if(sys==='AmbiPlate'){p16();mfs('16mm');bom.push({pr:'OverPlate',c:'44520',s:'OverPlate (390\u00d71000mm, 2 Grooves at 200mm)',q:Math.ceil(net*2)});bom.push({pr:'Aluminium Foil Tape',c:'92004',s:'Aluminium Foil Tape \u2013 50m',q:nMf});bom.push({pr:'16mm Nail in Pipe Clips (100pcs)',c:'41500',s:'16mm Nail in Pipe Clips (100pcs)',q:ceil(tm,30)});bom.push({pr:'140/10 Galv Staples',c:'60280',s:'140/10 Galv Staples (Pack of 5000)',q:nMf});bom.push({pr:'OverPlate Clout Nails',c:'41501',s:'OverPlate Clout Nails \u2013 25mm (815pcs/bag)',q:ceil(net*8,815)});}
   else if(sys==='AmbiLoFloor'){p12();mfs('12mm');var bq=ceil((gross*1.2)/0.72,1);bom.push({pr:'LoFloor Base',c:'46692',s:'LoFloor Base \u2013 12mm MR MDF Alu-Foil Grooved, 1200\u00d7600mm',q:bq});bom.push({pr:'LoFloor Topboard',c:'46693',s:'LoFloor Top \u2013 6mm MR MDF Alu-Foil, 1200\u00d7600mm',q:bq});bom.push({pr:'12mm Nail in Pipe Clips (100pcs)',c:'41490',s:'12mm Nail in Pipe Clips (100pcs)',q:ceil(tm,30)});}
   else if(sys==='AmbiJoFloor'){p12();mfs('12mm');var bq2=ceil((gross*1.2)/0.72,1);bom.push({pr:'JoFloor Base',c:'46690',s:'JoFloor Base \u2013 22mm Grooved P5 Chipboard Alu-Foil, 2400\u00d7600mm',q:bq2});bom.push({pr:'JoFloor Topboard',c:'46691',s:'JoFloor Top \u2013 6mm MDF Printed Alu-Foil, 1200\u00d7600mm',q:bq2});bom.push({pr:'12mm Nail in Pipe Clips (100pcs)',c:'41490',s:'12mm Nail in Pipe Clips (100pcs)',q:ceil(tm,30)});}
@@ -1562,7 +1591,16 @@ function generateBOM(id) {
 
   if(!sys){out.innerHTML=er('Please select a system type.');return;}
   p.system_type = sys;
-  if(gross<=0){out.innerHTML=er('Please enter a gross floor area.');return;}
+  // Gross is mandatory when the workings genuinely need it (insulation, DPM/
+  // separating layer, or a system whose boards cover the whole floor). Otherwise
+  // gross may be left blank and area-based tape/border fall back to net.
+  var _dpmSel = ['DPM only','Separating Layer only','Both DPM and Separating Layer'].indexOf(p.answers.dpm) > -1;
+  var _insulSel = p.answers.insulation === 'Yes';
+  var _grossCore = ['AmbiLoFloor','AmbiJoFloor','OverDeck20','AmbiDeck20','AmbiDeck18','AmbiCastellated','AmbiSolo','AmbiFloat10'].indexOf(sys) > -1;
+  if((_insulSel || _dpmSel || _grossCore) && gross<=0){
+    out.innerHTML=er('Gross area is required'+(_insulSel?' when supplying insulation':(_dpmSel?' for DPM / separating layer':' for this system'))+' — net can’t be used for this.');return;
+  }
+  if(gross<=0 && net<=0){out.innerHTML=er('Please enter a gross or net floor area.');return;}
   var ll=p.loops.map(function(l){return parseFloat(l.len);}).filter(function(v){return !isNaN(v)&&v>0;});
   if(!ll.length){out.innerHTML=er('Please enter at least one loop length.');return;}
   if(['AmbiTak','AmbiDuoClip','AmbiCastellated','AmbiSolo'].indexOf(sys)>-1&&!p.answers.dpm){out.innerHTML=er('Please answer the DPM question.');return;}
@@ -1725,8 +1763,10 @@ function generateAllBOMs() {
     var sysEl = document.getElementById('sys-'+nid);
     if(sysEl&&!sysEl.value) sysEl.value = p.system_type;
     var grossEl = document.getElementById('gross-'+nid);
+    var netEl = document.getElementById('net-'+nid);
     var gross = grossEl ? parseFloat(grossEl.value) : 0;
-    if(gross<=0) return;
+    var net = netEl ? parseFloat(netEl.value) : 0;
+    if((gross||0)<=0 && (net||0)<=0) return;   // skip only if no area at all
     generateBOM(nid);
     count++;
   });
@@ -1734,7 +1774,9 @@ function generateAllBOMs() {
   status.textContent = '✓ Generated '+count+' BOM'+(count!==1?'s':'');
 }
 
-var PIPE16={'30500':500,'30240':240,'30120':120};
+// Includes legacy (30xxx) and current AmbiFlex (402xx) + TraffiPipe (403xx) codes
+// so the combined list still recognises 16mm pipe lines to consolidate.
+var PIPE16={'30500':500,'30240':240,'30120':120,'40220':500,'40210':240,'40200':120,'40332':500,'40331':240,'40330':120};
 var PIPE12={'30050':500,'30020':200,'39000':100};
 
 function rebuildCombined(){ renderCombined(); }
@@ -1774,14 +1816,15 @@ function renderCombined() {
 }
 
 function calcCoils16(tm){
-  var r=tm,res=[];
+  // Consolidated 16mm pipe uses AmbiFlex codes (the default supplier).
+  var P=PIPE16_PRODUCTS.AmbiFlex, r=tm,res=[];
   var c500=Math.floor(r/500);r-=c500*500;
-  if(c500>0)res.push({pr:'16mm AmbiFlex Pipe',c:'30500',s:'16mm AmbiFlex Pipe – 500m Coil',q:c500});
+  if(c500>0)res.push({pr:P.name,c:P.c500.c,s:P.c500.s,q:c500});
   var c240=0;
   if(r/240>=1){c240++;r-=240;}if(r/240>=1){c240++;r-=240;}
   if(r>120){c240++;r=0;}
-  if(c240>0)res.push({pr:'16mm AmbiFlex Pipe',c:'30240',s:'16mm AmbiFlex Pipe – 240m Coil',q:c240});
-  if(r>0)res.push({pr:'16mm AmbiFlex Pipe',c:'30120',s:'16mm AmbiFlex Pipe – 120m Coil',q:1});
+  if(c240>0)res.push({pr:P.name,c:P.c240.c,s:P.c240.s,q:c240});
+  if(r>0)res.push({pr:P.name,c:P.c120.c,s:P.c120.s,q:1});
   return res;
 }
 
