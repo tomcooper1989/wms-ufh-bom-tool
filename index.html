@@ -601,7 +601,9 @@ function logFailure(file, reason, type) {
   fd.append('filename', file.name);
   fd.append('reason', reason);
   fd.append('failure_type', type || 'complete');
-  fd.append('pdf', file, file.name);
+  // Only attach the PDF when we have a real file; partial reads may pass a
+  // placeholder {name} object so the failure is still logged without a file.
+  if (file instanceof Blob) fd.append('pdf', file, file.name);
   fetch('/log_failure', { method: 'POST', body: fd }).catch(function(){});
 }
 
@@ -1613,8 +1615,9 @@ function generateBOM(id) {
   var _status = _readWarnings.length > 0 ? 'partial' : 'complete';
   logBOM(ref || p.project_ref || '', p.floor_name || '', sys, _status, _readWarnings);
   // Also log to failure list if partial — ensures it appears in dashboard failures section
-  if (_status === 'partial' && p._file) {
-    logFailure(p._file, _readWarnings.join('; '), 'partial');
+  if (_status === 'partial') {
+    var _failFile = p._file || { name: (p.floor_name || 'unknown') + '.pdf' };
+    logFailure(_failFile, _readWarnings.join('; '), 'partial');
   }
 
   if(Object.values(panels).some(function(x){return x.bom&&x.bom.length>0;}))

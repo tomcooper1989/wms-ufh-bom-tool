@@ -647,7 +647,7 @@ def _extract_values_from_chars(char_list):
         m = re.search(r'(\d+\.\d+)', grp_text)
         if m:
             v = float(m.group(1))
-            if 0 < v < 300:
+            if 0 < v < 5000:
                 values.append(v)
     return values
 
@@ -671,8 +671,8 @@ def extract_areas_from_chars_data(chars):
             if not vals and idx_r + 1 < len(sorted_items):
                 next_chars = sorted(sorted_items[idx_r+1][1], key=lambda c: c['x0'])
                 next_text = decode_cid(''.join(c['text'] for c in next_chars))
-                vals = re.findall(r'(\d+\.\d+)\s*m', next_text)
-                vals = [float(v) for v in vals if 0 < float(v) < 300]
+                vals = re.findall(r'(\d+\.?\d*)\s*m', next_text)
+                vals = [float(v) for v in vals if 0 < float(v) < 5000]
             if not vals and idx_r > 0:
                 prev_chars = sorted(sorted_items[idx_r-1][1], key=lambda c: c['x0'])
                 vals = _extract_values_from_chars(prev_chars)
@@ -682,8 +682,8 @@ def extract_areas_from_chars_data(chars):
             if not vals and idx_r + 1 < len(sorted_items):
                 next_chars = sorted(sorted_items[idx_r+1][1], key=lambda c: c['x0'])
                 next_text = decode_cid(''.join(c['text'] for c in next_chars))
-                vals = re.findall(r'(\d+\.\d+)\s*m', next_text)
-                vals = [float(v) for v in vals if 0 < float(v) < 300]
+                vals = re.findall(r'(\d+\.?\d*)\s*m', next_text)
+                vals = [float(v) for v in vals if 0 < float(v) < 5000]
             if not vals and idx_r > 0:
                 prev_chars = sorted(sorted_items[idx_r-1][1], key=lambda c: c['x0'])
                 vals = _extract_values_from_chars(prev_chars)
@@ -695,9 +695,9 @@ def _parse_area_row(row_chars, full_text):
     label_match = re.search(r'(?:Net|Gross)\s*Floor\s*Area', full_text, re.IGNORECASE)
     if not label_match:
         return []
-    vals_regex = re.findall(r'(\d+\.\d+)\s*m', full_text)
+    vals_regex = re.findall(r'(\d+\.?\d*)\s*m', full_text)
     if vals_regex:
-        return [float(v) for v in vals_regex if 0 < float(v) < 300]
+        return [float(v) for v in vals_regex if 0 < float(v) < 5000]
     label_len = label_match.end()
     running = ''
     data_chars = []
@@ -722,7 +722,7 @@ def _parse_area_row(row_chars, full_text):
         m = re.search(r'(\d+\.\d+)', grp_text)
         if m:
             v = float(m.group(1))
-            if 0 < v < 300:
+            if 0 < v < 5000:
                 values.append(v)
     return values
 
@@ -1131,12 +1131,12 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
         for line in raw_text.split('\n'):
             if re.search(r'Gross.{0,5}Floor.{0,5}Area', line, re.IGNORECASE):
                 vals = re.findall(r'(\d+\.?\d*)\s*m', line)
-                candidate = [float(v) for v in vals if 0 < float(v) < 500]
+                candidate = [float(v) for v in vals if 0 < float(v) < 5000]
                 if candidate:
                     gross_a2 += candidate
             if re.search(r'Net.{0,5}Floor.{0,5}Area', line, re.IGNORECASE):
                 vals = re.findall(r'(\d+\.?\d*)\s*m', line)
-                candidate = [float(v) for v in vals if 0 < float(v) < 500]
+                candidate = [float(v) for v in vals if 0 < float(v) < 5000]
                 if candidate:
                     net_a2 += candidate
 
@@ -1158,12 +1158,12 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
                     if hg:
                         vals = re.findall(r'(\d+\.?\d*)', all_cells)
                         gross_a3 = [float(v) for v in vals
-                                    if 0.5 < float(v) < 500
+                                    if 0.5 < float(v) < 50000
                                     and not (float(v) == int(float(v)) and 18 <= float(v) <= 30)]
                     if hn:
                         vals = re.findall(r'(\d+\.?\d*)', all_cells)
                         net_a3 = [float(v) for v in vals
-                                  if 0.5 < float(v) < 500
+                                  if 0.5 < float(v) < 5000
                                   and not (float(v) == int(float(v)) and 18 <= float(v) <= 30)]
         except Exception:
             pass
@@ -1239,7 +1239,7 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
                         _g_line_end = _ocr_full.find('\n', _g_line_start + 50)
                         _g_line = _ocr_full[_g_line_start:_g_line_end if _g_line_end > 0 else _g_line_start+200]
                         _gvals = [float(v) for v in re.findall(r'(\d+\.\d+)', _g_line)
-                                  if 0.5 < float(v) < 500]
+                                  if 0.5 < float(v) < 5000]
                         if _gvals:
                             gross_total = round(sum(_gvals), 1)
                 if not net_total:
@@ -1249,7 +1249,7 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
                         _n_line_end = _ocr_full.find('\n', _n_line_start + 50)
                         _n_line = _ocr_full[_n_line_start:_n_line_end if _n_line_end > 0 else _n_line_start+200]
                         _nvals = [float(v) for v in re.findall(r'(\d+\.\d+)', _n_line)
-                                  if 0.5 < float(v) < 500]
+                                  if 0.5 < float(v) < 5000]
                         if _nvals:
                             net_total = round(sum(_nvals), 1)
             except Exception:
