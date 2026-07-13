@@ -1547,7 +1547,7 @@ function calcBOM(id, src, isSys2, includeManifolds) {
   function mfs(sz){if(includeManifolds===false)return;src.manifoldLoops.forEach(function(lps,i){var m=mfc(lps,sz);bom.push({pr:'Manifold'+(nMf>1?' (M'+(i+1)+')':''),c:m.code,s:m.desc,q:1});});}
   function p16(){var c=pipe16(tm);var P=PIPE16_PRODUCTS[src.answers.pipe16]||PIPE16_PRODUCTS.AmbiFlex;if(c.c500>0)bom.push({pr:P.name,c:P.c500.c,s:P.c500.s,q:c.c500});if(c.c240>0)bom.push({pr:P.name,c:P.c240.c,s:P.c240.s,q:c.c240});if(c.c120>0)bom.push({pr:P.name,c:P.c120.c,s:P.c120.s,q:c.c120});}
   function p12(){var c=pipe12(tm);if(c.c500>0)bom.push({pr:'12mm AmbiFlex Pipe',c:'30050',s:'12mm AmbiFlex Pipe \u2013 500m Coil',q:c.c500});if(c.c200>0)bom.push({pr:'12mm AmbiFlex Pipe',c:'30020',s:'12mm AmbiFlex Pipe \u2013 200m Coil',q:c.c200});if(c.c100>0)bom.push({pr:'12mm AmbiFlex Pipe',c:'39000',s:'12mm AmbiFlex Pipe \u2013 100m Coil',q:c.c100});}
-  function tape(){bom.push({pr:'Cloth Tape',c:'92002',s:'Black Cloth Tape 70mm \u00d7 50m',q:ceil(area,15)});}
+  function tape(){if(gross>0)bom.push({pr:'Cloth Tape',c:'92002',s:'Black Cloth Tape 70mm \u00d7 50m',q:ceil(gross,15)});}
   function border(){bom.push({pr:'Border Edge Insulation',c:'41621',s:'Border Edge Insulation \u2013 Non Skirted',q:ceil(area,35)});}
   function insulation(){if(src.answers.insulation==='Yes'){var boards=Math.ceil((gross*1.1)/2.88);bom.push({pr:'Insulation Board',c:'',s:'Insulation Board \u2013 1200\u00d72400mm (2.88m\u00b2/board) \u2013 qty includes 10% wastage',q:boards});}}
   // Tail tape: per manifold by size \u2014 2\u20133 port: 2 rolls, 4\u20137 port: 3, 8+ port: 4.
@@ -1778,6 +1778,11 @@ function generateAllBOMs() {
 // so the combined list still recognises 16mm pipe lines to consolidate.
 var PIPE16={'30500':500,'30240':240,'30120':120,'40220':500,'40210':240,'40200':120,'40332':500,'40331':240,'40330':120};
 var PIPE12={'30050':500,'30020':200,'39000':100};
+// Which supplier each 16mm pipe code belongs to, so the combined list keeps
+// TraffiPipe and AmbiFlex as separate products (legacy 30xxx = AmbiFlex).
+var PIPE16_SUPPLIER_BY_CODE={'30500':'AmbiFlex','30240':'AmbiFlex','30120':'AmbiFlex',
+  '40220':'AmbiFlex','40210':'AmbiFlex','40200':'AmbiFlex',
+  '40332':'TraffiPipe','40331':'TraffiPipe','40330':'TraffiPipe'};
 
 function rebuildCombined(){ renderCombined(); }
 
@@ -1787,7 +1792,7 @@ function renderCombined() {
   var method=document.getElementById('pipeCombineMethod');
   var useConsolidate=method&&method.value==='consolidate';
   var merged={};
-  var rawMetres16=0,rawMetres12=0;
+  var raw16={},rawMetres12=0;   // 16mm metres kept per supplier (AmbiFlex/TraffiPipe)
   allPanels.forEach(function(p){
     p.bom.forEach(function(item){
       if(useConsolidate&&PIPE16[item.c])return;
@@ -1797,15 +1802,17 @@ function renderCombined() {
       else{merged[key]={pr:item.pr,c:item.c,s:item.s,q:item.q};}
     });
     if(useConsolidate){
-      var has16=p.bom.some(function(i){return PIPE16[i.c];});
+      var pipe16Line=p.bom.filter(function(i){return PIPE16[i.c];})[0];
       var has12=p.bom.some(function(i){return PIPE12[i.c];});
       var loopTotal=p.loops.reduce(function(a,l){return a+(parseFloat(l.len)||0);},0);
-      if(has16)rawMetres16+=loopTotal;
+      if(pipe16Line){var sup=PIPE16_SUPPLIER_BY_CODE[pipe16Line.c]||'AmbiFlex';raw16[sup]=(raw16[sup]||0)+loopTotal;}
       if(has12)rawMetres12+=loopTotal;
     }
   });
   if(useConsolidate){
-    if(rawMetres16>0)calcCoils16(rawMetres16*1.1).forEach(function(c){merged[c.c]=c;});
+    Object.keys(raw16).forEach(function(sup){
+      if(raw16[sup]>0)calcCoils16(raw16[sup]*1.1,sup).forEach(function(c){merged[c.c]=c;});
+    });
     if(rawMetres12>0)calcCoils12(rawMetres12*1.1).forEach(function(c){merged[c.c]=c;});
   }
   var rows=Object.values(merged);
@@ -1815,9 +1822,9 @@ function renderCombined() {
   window._combinedBom=rows;
 }
 
-function calcCoils16(tm){
-  // Consolidated 16mm pipe uses AmbiFlex codes (the default supplier).
-  var P=PIPE16_PRODUCTS.AmbiFlex, r=tm,res=[];
+function calcCoils16(tm, supplier){
+  // Consolidated 16mm pipe keeps its supplier's codes (AmbiFlex default).
+  var P=PIPE16_PRODUCTS[supplier]||PIPE16_PRODUCTS.AmbiFlex, r=tm,res=[];
   var c500=Math.floor(r/500);r-=c500*500;
   if(c500>0)res.push({pr:P.name,c:P.c500.c,s:P.c500.s,q:c500});
   var c240=0;
