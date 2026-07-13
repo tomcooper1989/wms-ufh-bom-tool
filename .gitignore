@@ -1,0 +1,7 @@
+# Usage-log backups contain real user names and project references. Never commit
+# them - this repo is on GitHub.
+backups/
+
+__pycache__/
+*.pyc
+.railway/

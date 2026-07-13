@@ -4,7 +4,7 @@ Deployed on Railway. Users access via browser, no local install needed.
 """
 
 from flask import Flask, request, jsonify, send_from_directory, redirect, session
-import os, tempfile, functools, json, datetime, re
+import os, tempfile, functools, json, datetime, re, contextlib
 
 # Import all extraction logic from server.py
 from server import scan_pdf_pages, scan_and_extract, extract_page
@@ -18,32 +18,141 @@ ACCESS_PASSWORD = os.environ.get('ACCESS_PASSWORD', '')
 # Dashboard password — set DASHBOARD_PASSWORD in Railway env vars
 DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD', 'wms-admin')
 
-# Log file path — persists on Railway volume if configured, otherwise ephemeral
-LOG_FILE = os.environ.get('LOG_FILE', '/data/bom_usage.json')
+# Log file paths. /data is a mounted Railway volume, so these persist across deploys.
+#
+# LEGACY_LOG_FILE is the original single-JSON-array format. The log is now one JSON
+# object per line (.jsonl) so that appends never rewrite the whole file; the legacy
+# file is migrated in on first boot and then left alone as a backup. Rewriting the
+# whole array on every append is what destroyed the pre-2026-07-10 history — two
+# workers raced, corrupted the JSON, and the next load silently started from []. See
+# LOGGING.md.
+LEGACY_LOG_FILE = os.environ.get('LOG_FILE', '/data/bom_usage.json')
+LOG_FILE = os.path.splitext(LEGACY_LOG_FILE)[0] + '.jsonl'
 FAILURES_DIR = os.environ.get('FAILURES_DIR', '/data/bom_failures')
 os.makedirs(FAILURES_DIR, exist_ok=True)
+os.makedirs(os.path.dirname(LOG_FILE) or '.', exist_ok=True)
+
+try:
+    import fcntl   # POSIX (Railway)
+except ImportError:
+    fcntl = None
+try:
+    import msvcrt  # Windows (local dev)
+except ImportError:
+    msvcrt = None
 
 
 # ---------------------------------------------------------------
 # Usage logging helpers
+#
+# gunicorn runs 2 workers, so every one of these can be entered by two processes
+# at once. Every write — append or full rewrite — serialises through log_lock().
+# Do not lean on O_APPEND being atomic instead: that holds on Linux but not on
+# Windows, where concurrent appends interleave and lose entries outright.
 # ---------------------------------------------------------------
 
+def _lock_file(lf, exclusive=True):
+    if fcntl is not None:
+        fcntl.flock(lf.fileno(), fcntl.LOCK_EX if exclusive else fcntl.LOCK_UN)
+    elif msvcrt is not None:
+        lf.seek(0)
+        mode = msvcrt.LK_LOCK if exclusive else msvcrt.LK_UNLCK
+        while True:
+            try:
+                msvcrt.locking(lf.fileno(), mode, 1)
+                return
+            except OSError:
+                if not exclusive:
+                    return  # already unlocked
+                continue    # LK_LOCK gave up after its retries; keep waiting
+
+
+@contextlib.contextmanager
+def log_lock():
+    """Exclusive cross-process lock. Every write to the log must hold this.
+
+    Not re-entrant — never call a helper that takes it from inside a with-block.
+    """
+    with open(LOG_FILE + '.lock', 'a+') as lf:
+        _lock_file(lf, exclusive=True)
+        try:
+            yield
+        finally:
+            _lock_file(lf, exclusive=False)
+
+
 def load_log():
-    try:
-        if os.path.exists(LOG_FILE):
-            with open(LOG_FILE, 'r') as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return []
+    """Read all entries. A corrupt line is skipped and reported, never fatal."""
+    entries = []
+    if not os.path.exists(LOG_FILE):
+        return entries
+    with open(LOG_FILE, 'r') as f:
+        for lineno, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entries.append(json.loads(line))
+            except ValueError:
+                # One bad line costs one entry, not the whole history.
+                app.logger.warning('skipping corrupt log line %d in %s', lineno, LOG_FILE)
+    return entries
 
 
-def save_log(entries):
+def append_log(entry):
+    """Append one entry under the lock. Raises on failure — callers must handle.
+
+    There is no read-modify-write cycle here, so concurrent workers cannot clobber
+    each other's entries the way the old load/mutate/save did.
+    """
+    line = (json.dumps(entry, separators=(',', ':')) + '\n').encode('utf-8')
+    with log_lock():
+        fd = os.open(LOG_FILE, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        try:
+            os.write(fd, line)
+        finally:
+            os.close(fd)
+
+
+def rewrite_log(entries):
+    """Replace the whole log atomically. Caller must hold log_lock(). Raises on failure."""
+    # Write a temp file alongside, then swap: a crash or full disk mid-write leaves
+    # the previous log intact rather than truncated to nothing.
+    fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(LOG_FILE) or '.', suffix='.tmp')
     try:
-        with open(LOG_FILE, 'w') as f:
-            json.dump(entries, f, indent=2)
+        with os.fdopen(fd, 'w') as f:
+            for entry in entries:
+                f.write(json.dumps(entry, separators=(',', ':')) + '\n')
+        os.replace(tmp_path, LOG_FILE)
     except Exception:
-        pass
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def migrate_legacy_log():
+    """One-time import of the old single-JSON-array log into the .jsonl log."""
+    if os.path.exists(LOG_FILE) or not os.path.exists(LEGACY_LOG_FILE):
+        return
+    with log_lock():
+        if os.path.exists(LOG_FILE):  # another worker won the race
+            return
+        try:
+            with open(LEGACY_LOG_FILE, 'r') as f:
+                entries = json.load(f)
+        except Exception:
+            app.logger.exception('could not read legacy log %s — leaving it in place', LEGACY_LOG_FILE)
+            return
+        if not isinstance(entries, list):
+            app.logger.error('legacy log %s is not a list — leaving it in place', LEGACY_LOG_FILE)
+            return
+        rewrite_log(entries)
+        app.logger.info('migrated %d entries from %s to %s', len(entries), LEGACY_LOG_FILE, LOG_FILE)
+
+
+migrate_legacy_log()
 
 
 # ---------------------------------------------------------------
@@ -113,11 +222,10 @@ def log_bom():
             'floor': str(data.get('floor', '')).strip()[:80],
             'system': str(data.get('system', '')).strip()[:40],
         }
-        entries = load_log()
-        entries.append(entry)
-        save_log(entries)
+        append_log(entry)
         return jsonify({'ok': True})
     except Exception as e:
+        app.logger.exception('failed to record BOM usage entry')
         return jsonify({'ok': False, 'error': str(e)})
 
 
@@ -147,11 +255,10 @@ def log_failure():
             'saved_as': save_name if saved_path else None,
             'type': 'failure',
         }
-        entries = load_log()
-        entries.append(entry)
-        save_log(entries)
+        append_log(entry)
         return jsonify({'ok': True})
     except Exception as e:
+        app.logger.exception('failed to record PDF failure entry')
         return jsonify({'ok': False, 'error': str(e)})
 
 
@@ -176,11 +283,42 @@ def delete_entries():
         if data.get('password') != DASHBOARD_PASSWORD:
             return jsonify({'error': 'wrong password'}), 403
         keys_to_delete = set(data.get('keys', []))  # each key = "ts||user"
-        entries = load_log()
-        entries = [e for e in entries if '{}||{}'.format(e.get('ts',''), e.get('user','')) not in keys_to_delete]
-        save_log(entries)
+        # Read and rewrite under the lock, or a concurrent append lands in the
+        # window between them and is silently dropped by the rewrite.
+        with log_lock():
+            entries = [e for e in load_log()
+                       if '{}||{}'.format(e.get('ts', ''), e.get('user', '')) not in keys_to_delete]
+            rewrite_log(entries)
         return jsonify({'ok': True, 'remaining': len(entries)})
     except Exception as e:
+        app.logger.exception('failed to delete log entries')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/import_entries', methods=['POST'])
+def import_entries():
+    """Restore entries from a backup — protected by dashboard password.
+
+    Skips entries already present, so re-running it is safe: use it to merge a
+    dashboard backup back in after a redeploy has wiped the log.
+    """
+    try:
+        data = request.get_json(force=True) or {}
+        if data.get('password') != DASHBOARD_PASSWORD:
+            return jsonify({'error': 'wrong password'}), 403
+        incoming = data.get('entries')
+        if not isinstance(incoming, list):
+            return jsonify({'error': 'entries must be a list'}), 400
+        with log_lock():
+            existing = load_log()
+            seen = {json.dumps(e, sort_keys=True) for e in existing}
+            added = [e for e in incoming
+                     if isinstance(e, dict) and json.dumps(e, sort_keys=True) not in seen]
+            if added:
+                rewrite_log(existing + added)
+        return jsonify({'ok': True, 'added': len(added), 'total': len(existing) + len(added)})
+    except Exception as e:
+        app.logger.exception('failed to import log entries')
         return jsonify({'error': str(e)}), 500
 
 
