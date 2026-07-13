@@ -101,12 +101,18 @@ user in the same second share a key, as do a BOM and its failure entry. Deleting
 removes every entry that matches it. To remove one of a set, delete the key and re-import
 the ones you want to keep.
 
-## Unrelated issue found during the investigation
+## Access control: the open tool is intentional
 
-The Railway service has an env var named **`access_password`** (lowercase), but the code
-reads `ACCESS_PASSWORD`. Linux environment variables are case-sensitive, so
-`ACCESS_PASSWORD` is unset, `login_required` is a no-op, and **the app currently serves to
-anyone with the URL without a login** (verified: `GET /` returns 200 with the app page).
+**Do not "fix" this.** The BOM tool is deliberately open - anyone with the URL can use it,
+with no login. Estimators use it daily and a password would just get in their way.
 
-Fix by renaming the variable in Railway to `ACCESS_PASSWORD`. The dashboard is unaffected
-— `DASHBOARD_PASSWORD` is spelled correctly and is enforced.
+Only the usage dashboard is protected, by `DASHBOARD_PASSWORD`.
+
+Mechanically, the tool is open because the Railway service has an env var named
+`access_password` (lowercase) while the code reads `ACCESS_PASSWORD` (app.py). Linux env
+vars are case-sensitive, so `ACCESS_PASSWORD` is unset, and `login_required` is a no-op.
+
+That lowercase variable is inert and is a trap: **renaming it to `ACCESS_PASSWORD` would
+immediately lock every user out of the tool.** The `login_required` decorator and `/login`
+route are likewise dormant - `railway.json` still points its healthcheck at `/login`, which
+is why the route must stay.
