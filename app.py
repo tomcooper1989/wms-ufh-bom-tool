@@ -215,12 +215,17 @@ def log_bom():
     """Called by the browser each time a BOM is generated."""
     try:
         data = request.get_json(force=True) or {}
+        _warnings = data.get('warnings', [])
+        if not isinstance(_warnings, list):
+            _warnings = []
         entry = {
             'ts': datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
             'user': str(data.get('user', '')).strip()[:80],
             'project_ref': str(data.get('project_ref', '')).strip()[:80],
             'floor': str(data.get('floor', '')).strip()[:80],
             'system': str(data.get('system', '')).strip()[:40],
+            'status': str(data.get('status', 'complete')).strip()[:20] or 'complete',
+            'warnings': [str(w).strip()[:200] for w in _warnings][:20],
         }
         append_log(entry)
         return jsonify({'ok': True})
@@ -238,6 +243,10 @@ def log_failure():
         filename = request.form.get('filename', 'unknown.pdf').strip()[:120]
         reason = request.form.get('reason', '').strip()[:200]
         failure_type = request.form.get('failure_type', 'complete').strip()[:20]
+        # Ignore empty junk (e.g. bots/scanners POSTing to this open endpoint): a
+        # genuine failure always carries a reason and/or the PDF that failed to read.
+        if not reason and 'pdf' not in request.files:
+            return jsonify({'ok': True, 'skipped': 'empty'})
         ts = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')
         safe_name = re.sub(r'[^\w\.\-]', '_', filename)
         save_name = f'{ts}_{safe_name}'
@@ -271,6 +280,23 @@ def download_failure(filename):
             return jsonify({'error': 'wrong password'}), 403
         safe = re.sub(r'[^\w\.\-]', '_', filename)
         return send_from_directory(FAILURES_DIR, safe, as_attachment=True)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/download_log', methods=['POST'])
+def download_log():
+    """Download the raw usage log for backup — protected by dashboard password.
+    Returns the current .jsonl, falling back to the legacy JSON-array file."""
+    try:
+        data = request.get_json(force=True) or {}
+        if data.get('password') != DASHBOARD_PASSWORD:
+            return jsonify({'error': 'wrong password'}), 403
+        path = LOG_FILE if os.path.exists(LOG_FILE) else LEGACY_LOG_FILE
+        if not os.path.exists(path):
+            return jsonify({'error': 'no log file yet'}), 404
+        return send_from_directory(os.path.dirname(path) or '.',
+                                   os.path.basename(path), as_attachment=True)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

@@ -398,6 +398,7 @@ function renderDashboard(entries) {
 
   html += '<div class="dash-actions">' +
     '<button class="dash-btn primary" onclick="exportDashCSV()">&#8595; Export CSV</button>' +
+    '<button class="dash-btn" onclick="downloadRawLog()">&#8681; Backup raw log</button>' +
     '<button class="dash-btn" style="background:var(--danger);color:#fff;border-color:var(--danger);display:none;" id="dashDeleteBtn" onclick="deleteSelected()">&#10007; Delete selected</button>' +
     '<button class="dash-btn" onclick="document.getElementById(\'dashLogin\').style.display=\'flex\';document.getElementById(\'dashContent\').style.display=\'none\';">&#8592; Back</button>' +
     '</div>';
@@ -441,11 +442,11 @@ function renderDashboard(entries) {
   var bomEntries = entries.filter(function(e){ return !e.type || e.type !== 'failure'; });
   var sorted = bomEntries.slice().reverse();
   sorted.forEach(function(e){
-    var statusBadge = e.status === 'complete'
-      ? '<span style="color:var(--success);font-weight:600;">&#10003; Complete</span>'
-      : e.status === 'partial'
+    // Default missing status to Complete — only an explicit 'partial' shows the
+    // partial badge (older rows have no status field and were completed reads).
+    var statusBadge = e.status === 'partial'
       ? '<span style="color:#b45309;font-weight:600;">&#9888; Partial read</span>'
-      : '<span style="color:#b45309;font-weight:600;">&#9888; Partial read</span>';
+      : '<span style="color:var(--success);font-weight:600;">&#10003; Complete</span>';
     var warnings = (e.warnings && e.warnings.length) ? e.warnings.join('; ') : '—';
     var _key = (e.ts||'') + '||' + (e.user||'');
     html += '<tr><td><input type="checkbox" class="dash-row-cb" value="' + _key + '" onchange="updateDeleteBtn()"></td><td>' + toUKTime(e.ts) + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td>' + (e.project_ref||'') + '</td><td>' + (e.floor||'') + '</td><td>' + (e.system||'') + '</td><td>' + statusBadge + '</td><td style="font-size:11px;color:#92400e;">' + warnings + '</td></tr>';
@@ -508,6 +509,20 @@ async function downloadFailure(savedAs) {
   if (!res.ok) { alert('Download failed — check password'); return; }
   var blob = await res.blob();
   var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = savedAs; a.click();
+}
+
+async function downloadRawLog() {
+  var pw = document.getElementById('dashPwInput').value;
+  var res = await fetch('/download_log', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({password: pw})
+  });
+  if (!res.ok) { alert('Backup failed — check password (or no log yet)'); return; }
+  var blob = await res.blob();
+  var stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'bom_usage_backup_' + stamp + '.jsonl'; a.click();
 }
 
 function exportDashCSV() {
