@@ -652,6 +652,37 @@ def _extract_values_from_chars(char_list):
     return values
 
 
+def _looks_like_values_row(text):
+    """True when a row is numeric data rather than prose. Drawing notes bleed into
+    the area rows (e.g. '1 METER OF 12MM PIPE HOLDS 0.06 LITRES OF WATER') and must
+    never be mistaken for floor areas. Unit suffixes like m/m2 are only 1-2 letters."""
+    if not re.search(r'\d', text):
+        return False
+    return not re.search(r'[A-Za-z]{4,}', text)
+
+
+def _area_values_from_neighbour(sorted_items, idx_r):
+    """Some drawings put the area values on their own char row just below (or above)
+    the label, because the values sit a fraction of a point off the label's baseline.
+    Read them from the neighbouring row, but only when that row is numeric data."""
+    for offset in (1, -1):
+        j = idx_r + offset
+        if not (0 <= j < len(sorted_items)):
+            continue
+        n_chars = sorted(sorted_items[j][1], key=lambda c: c['x0'])
+        n_text = decode_cid(''.join(c['text'] for c in n_chars))
+        if not _looks_like_values_row(n_text):
+            continue
+        vals = [float(v) for v in re.findall(r'(\d+\.?\d*)\s*m', n_text)
+                if 0 < float(v) < 5000]
+        if not vals:
+            # Drawings that omit the m2 unit: split the row into columns instead.
+            vals = _extract_values_from_chars(n_chars)
+        if vals:
+            return vals
+    return []
+
+
 def extract_areas_from_chars_data(chars):
     if not chars:
         return [], []
@@ -668,25 +699,13 @@ def extract_areas_from_chars_data(chars):
         raw_text = decode_cid(''.join(c['text'] for c in row_chars))
         if re.search(r'Gross\s*Floor\s*Area', raw_text, re.IGNORECASE):
             vals = _parse_area_row(row_chars, raw_text)
-            if not vals and idx_r + 1 < len(sorted_items):
-                next_chars = sorted(sorted_items[idx_r+1][1], key=lambda c: c['x0'])
-                next_text = decode_cid(''.join(c['text'] for c in next_chars))
-                vals = re.findall(r'(\d+\.?\d*)\s*m', next_text)
-                vals = [float(v) for v in vals if 0 < float(v) < 5000]
-            if not vals and idx_r > 0:
-                prev_chars = sorted(sorted_items[idx_r-1][1], key=lambda c: c['x0'])
-                vals = _extract_values_from_chars(prev_chars)
+            if not vals:
+                vals = _area_values_from_neighbour(sorted_items, idx_r)
             gross_areas += vals  # accumulate across all room tables
         elif re.search(r'Net\s*Floor\s*Area', raw_text, re.IGNORECASE):
             vals = _parse_area_row(row_chars, raw_text)
-            if not vals and idx_r + 1 < len(sorted_items):
-                next_chars = sorted(sorted_items[idx_r+1][1], key=lambda c: c['x0'])
-                next_text = decode_cid(''.join(c['text'] for c in next_chars))
-                vals = re.findall(r'(\d+\.?\d*)\s*m', next_text)
-                vals = [float(v) for v in vals if 0 < float(v) < 5000]
-            if not vals and idx_r > 0:
-                prev_chars = sorted(sorted_items[idx_r-1][1], key=lambda c: c['x0'])
-                vals = _extract_values_from_chars(prev_chars)
+            if not vals:
+                vals = _area_values_from_neighbour(sorted_items, idx_r)
             net_areas += vals  # accumulate across all room tables
     return gross_areas, net_areas
 
