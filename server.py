@@ -652,24 +652,54 @@ def _extract_values_from_chars(char_list):
     return values
 
 
+# Rows are grouped by vertical position across the whole page, so a drawing note in
+# the margin lands in the same "row" as table data. These bound the table block
+# horizontally: its columns sit close together, margin notes are hundreds of points
+# away (e.g. table at x 218-447, notes at x 999+ on WSO072144-C).
+_AREA_COL_MAX_GAP = 150.0     # a gap wider than this means we've left the table
+_AREA_ROW_MAX_OFFSET = 250.0  # a values row must start near the label's left edge
+
+
+def _clip_row_to_table(row_chars, label_x0):
+    """Keep only the characters in the same table block as the label.
+
+    Walks left-to-right from the label's left edge and stops at the first large
+    horizontal gap, so text sitting out in the page margin is never read as data."""
+    kept = []
+    prev_x1 = None
+    for c in sorted(row_chars, key=lambda c: c['x0']):
+        if c['x1'] < label_x0 - 1:
+            continue                                  # left of the table
+        if prev_x1 is not None and c['x0'] - prev_x1 > _AREA_COL_MAX_GAP:
+            break                                     # gap too wide - out of the table
+        kept.append(c)
+        prev_x1 = c['x1']
+    return kept
+
+
 def _looks_like_values_row(text):
-    """True when a row is numeric data rather than prose. Drawing notes bleed into
-    the area rows (e.g. '1 METER OF 12MM PIPE HOLDS 0.06 LITRES OF WATER') and must
-    never be mistaken for floor areas. Unit suffixes like m/m2 are only 1-2 letters."""
+    """True when a row is numeric data rather than prose. Secondary guard behind the
+    geometry clipping — unit suffixes like m/m2 are only 1-2 letters, prose is longer."""
     if not re.search(r'\d', text):
         return False
     return not re.search(r'[A-Za-z]{4,}', text)
 
 
-def _area_values_from_neighbour(sorted_items, idx_r):
+def _area_values_from_neighbour(sorted_items, idx_r, label_x0):
     """Some drawings put the area values on their own char row just below (or above)
     the label, because the values sit a fraction of a point off the label's baseline.
-    Read them from the neighbouring row, but only when that row is numeric data."""
+    The neighbour must belong to the same table block: it has to start near the
+    label's left edge, and is clipped to the table's columns before being read."""
     for offset in (1, -1):
         j = idx_r + offset
         if not (0 <= j < len(sorted_items)):
             continue
-        n_chars = sorted(sorted_items[j][1], key=lambda c: c['x0'])
+        n_all = sorted(sorted_items[j][1], key=lambda c: c['x0'])
+        if not n_all:
+            continue
+        if abs(n_all[0]['x0'] - label_x0) > _AREA_ROW_MAX_OFFSET:
+            continue                                  # a different block (margin note)
+        n_chars = _clip_row_to_table(n_all, min(label_x0, n_all[0]['x0']))
         n_text = decode_cid(''.join(c['text'] for c in n_chars))
         if not _looks_like_values_row(n_text):
             continue
@@ -697,16 +727,21 @@ def extract_areas_from_chars_data(chars):
     for idx_r, (y, row_chars) in enumerate(sorted_items):
         row_chars.sort(key=lambda c: c['x0'])
         raw_text = decode_cid(''.join(c['text'] for c in row_chars))
-        if re.search(r'Gross\s*Floor\s*Area', raw_text, re.IGNORECASE):
-            vals = _parse_area_row(row_chars, raw_text)
+        is_gross = bool(re.search(r'Gross\s*Floor\s*Area', raw_text, re.IGNORECASE))
+        is_net = bool(re.search(r'Net\s*Floor\s*Area', raw_text, re.IGNORECASE))
+        if is_gross or is_net:
+            # Clip to the label's own table block first, so margin text sharing this
+            # row (notes, other tables) can't be read as area values.
+            label_x0 = row_chars[0]['x0']
+            tbl_chars = _clip_row_to_table(row_chars, label_x0)
+            tbl_text = decode_cid(''.join(c['text'] for c in tbl_chars))
+            vals = _parse_area_row(tbl_chars, tbl_text)
             if not vals:
-                vals = _area_values_from_neighbour(sorted_items, idx_r)
-            gross_areas += vals  # accumulate across all room tables
-        elif re.search(r'Net\s*Floor\s*Area', raw_text, re.IGNORECASE):
-            vals = _parse_area_row(row_chars, raw_text)
-            if not vals:
-                vals = _area_values_from_neighbour(sorted_items, idx_r)
-            net_areas += vals  # accumulate across all room tables
+                vals = _area_values_from_neighbour(sorted_items, idx_r, label_x0)
+            if is_gross:
+                gross_areas += vals  # accumulate across all room tables
+            else:
+                net_areas += vals
     return gross_areas, net_areas
 
 
