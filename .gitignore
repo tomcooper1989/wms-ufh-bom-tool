@@ -2,6 +2,9 @@
 # them - this repo is on GitHub.
 backups/
 
+# Local dev-server log/failure data (same reason as backups/).
+.devdata/
+
 __pycache__/
 *.pyc
 .railway/
