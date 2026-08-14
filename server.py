@@ -147,6 +147,26 @@ def deduplicate_groups(all_groups):
     return final_groups
 
 
+def collapse_doubled_loops(groups):
+    """Overlapping manifold tables (two tables sharing the same rows, or a repeated
+    "Loop Length" label) can make a page's loop values be read twice. When the
+    flattened loop list is an exact repeat of its first half, collapse it so the pipe
+    isn't ordered double. Returns (groups, was_doubled)."""
+    flat = [l for g in groups for l in g]
+    n = len(flat)
+    if n < 4 or n % 2 != 0 or flat[:n // 2] != flat[n // 2:]:
+        return groups, False
+    half_len = n // 2
+    new_groups, acc = [], 0
+    for g in groups:
+        if acc >= half_len:
+            break
+        take = min(len(g), half_len - acc)
+        new_groups.append(g[:take])
+        acc += take
+    return (new_groups or [flat[:half_len]]), True
+
+
 SYSTEM_MAP = [
     # AmbiLoFloor
     ("lofloor",                  "AmbiLoFloor"),
@@ -961,12 +981,27 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
         if not system_type and system_type_hint:
             system_type = system_type_hint
 
+        # Unsupported systems: the tool has no BOM rules for these, so it must NOT map
+        # them to a similar-but-wrong product (e.g. Ambi-float 30 -> AmbiFloat 10, which
+        # is a different panel). Flag them for manual entry instead.
+        #
+        # Only trigger when the floor was actually detected as a floating floor
+        # (AmbiFloat10). The "Ambi-float 30" legend sits in the notes block on EVERY
+        # page of a job, so a tacker floor in the same set must not be flagged just
+        # because that legend is present.
+        unsupported_system = None
+        if system_type == 'AmbiFloat10' and re.search(
+                r'ambi[\s-]*float\s*30', _chars_text + ' ' + raw_text, re.IGNORECASE):
+            unsupported_system = 'Ambi-float 30'
+            system_type = None
+            system_type_hint = None
+
         # Multi-system detection — scan every "System" row for distinct systems so
         # mixed drawings (e.g. AmbiTak + AmbiFloat10 on the same floor) don't silently
         # drop the secondary system's rooms. Primary stays as detected above.
         secondary_systems = []
         try:
-            _sys_counts = detect_systems_from_chars(_page_chars_unit)
+            _sys_counts = {} if unsupported_system else detect_systems_from_chars(_page_chars_unit)
             if len(_sys_counts) > 1:
                 _ordered = sorted(_sys_counts.items(), key=lambda kv: kv[1], reverse=True)
                 _primary = system_type if system_type in _sys_counts else _ordered[0][0]
@@ -1172,6 +1207,7 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
                     break
 
         per_manifold_groups = best_groups
+        per_manifold_groups, _loops_doubled = collapse_doubled_loops(per_manifold_groups)
         loops = [l for g in per_manifold_groups for l in g]
         manifold_loops = [len(g) for g in per_manifold_groups]
         _loop_method = best_source if loops else 'none'
@@ -1328,11 +1364,17 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
             warnings.append("Loop lengths could not be read — enter manually")
         elif len(loops) != sum(manifold_loops):
             warnings.append(f"Loop count mismatch: found {len(loops)} lengths for {sum(manifold_loops)} loops — check manually")
+        if _loops_doubled:
+            warnings.append("Loop lengths appeared duplicated (overlapping manifold tables) and were "
+                            "de-duplicated — please check the loops and manifold split")
         if not gross_total:
             warnings.append("Gross floor area could not be read — enter manually")
         if not net_total:
             warnings.append("Net floor area could not be read — enter manually")
-        if not system_type:
+        if unsupported_system:
+            warnings.append("{} is not a system this tool supports — select the system and "
+                            "enter the BOM manually".format(unsupported_system))
+        elif not system_type:
             warnings.append("System type not detected — select manually")
         if secondary_systems:
             if systems:
