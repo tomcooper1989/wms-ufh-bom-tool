@@ -748,6 +748,16 @@ function clearAll() {
   _topIssues = [];
 }
 
+// Short cause+action note shown when values couldn't be read because the drawing
+// was exported as graphics rather than text.
+function exportCauseNote(warnings) {
+  if (!warnings || !warnings.some(function(w){ return /could not be read/i.test(w); })) return '';
+  return '<div style="margin-top:0.5rem;background:#fee2e2;border:1px solid #dc2626;border-radius:var(--radius);padding:0.5rem 0.7rem;font-size:11px;color:#991b1b;line-height:1.4;">' +
+    '<strong>Cause:</strong> some values were saved as graphics, not text. ' +
+    '<strong>Action:</strong> ask the designer to re-export the drawing (Export to PDF), then re-upload.' +
+    '</div>';
+}
+
 var _topIssues = [];
 function addTopIssue(filename, floorName, warnings) {
   var label = floorName ? (filename + ' \u2014 ' + floorName) : filename;
@@ -809,7 +819,7 @@ async function loadPDF(id, file) {
           var warnHtml = '<div style="margin-top:0.6rem;background:#fef3c7;border:2px solid #f59e0b;border-radius:var(--radius);padding:0.75rem 1rem;">' +
             '<p style="font-size:12px;font-weight:700;color:#92400e;margin:0 0 0.4rem;">&#9888; Issues found \u2014 check before generating BOM:</p><ul style="margin:0;padding-left:1.2rem;">' +
             data.warnings.map(function(w){ return '<li style="font-size:12px;color:#92400e;margin-bottom:2px;">' + w + '</li>'; }).join('') +
-            '</ul></div>';
+            '</ul>' + exportCauseNote(data.warnings) + '</div>';
           var formEl3 = document.getElementById('form-' + id);
           if (formEl3) formEl3.insertAdjacentHTML('afterbegin', warnHtml);
           addTopIssue(file.name, data.floor_name, data.warnings);
@@ -871,7 +881,7 @@ async function extractPage(id, file, pageIndex, unitIndex, splitX, unitLabel, fl
         '<p style="font-size:12px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.4rem;">\u26a0 Could not read the following \u2014 please enter manually:</p>' +
         '<ul style="margin:0;padding-left:1.2rem;">' +
         data.warnings.map(function(w){ return '<li style="font-size:12px;color:#92400e;margin-bottom:2px;">' + w + '</li>'; }).join('') +
-        '</ul></div>';
+        '</ul>' + exportCauseNote(data.warnings) + '</div>';
       var formEl = document.getElementById('form-' + id);
       if (formEl) formEl.insertAdjacentHTML('afterbegin', warnHtml);
       addTopIssue(file.name, data.floor_name, data.warnings);
