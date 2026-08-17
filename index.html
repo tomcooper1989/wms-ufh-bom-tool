@@ -414,6 +414,12 @@ function renderDashboard(entries) {
   var failures = entries.filter(function(e){ return e.type === 'failure'; });
   var completeFails = failures.filter(function(e){ return e.failure_type !== 'partial'; });
   var partialFails = failures.filter(function(e){ return e.failure_type === 'partial'; });
+  // Missing key data (gross / net / loop lengths or numbers) is serious, so it gets
+  // its own list near the complete failures. Everything else (e.g. system type not
+  // detected) stays in the partial list below.
+  var _isCriticalFail = function(e){ return /gross|net\s*floor|loop\s*length|loop\s*count|loop\s*number|loops?\s+could not/i.test(e.reason || ''); };
+  var criticalFails = partialFails.filter(_isCriticalFail);
+  var otherPartials = partialFails.filter(function(e){ return !_isCriticalFail(e); });
 
   if (completeFails.length) {
     html += '<p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#dc2626;margin-bottom:0.5rem;">&#10007; Complete read failures</p>';
@@ -426,10 +432,21 @@ function renderDashboard(entries) {
     html += '</tbody></table>';
   }
 
-  if (partialFails.length) {
+  if (criticalFails.length) {
+    html += '<p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#dc2626;margin-bottom:0.5rem;">&#9888; Missing key data (gross / net / loop lengths or numbers)</p>';
+    html += '<table class="dash-table" style="margin-bottom:1.25rem;"><thead><tr><th style="width:28px;"><input type="checkbox" onclick="toggleAllChecks(this)"></th><th>Date / Time</th><th>User</th><th>Filename</th><th>Missing data</th><th></th></tr></thead><tbody>';
+    criticalFails.slice().reverse().forEach(function(e){
+      var _fkey = (e.ts||'') + '||' + (e.user||'');
+      html += '<tr><td><input type="checkbox" class="dash-row-cb" value="' + _fkey + '" onchange="updateDeleteBtn()"></td><td>' + toUKTime(e.ts) + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td style="font-size:11px;">' + (e.filename||'') + '</td><td style="font-size:11px;color:#92400e;">' + (e.reason||'') + '</td>' +
+        (e.saved_as ? '<td><button class="dash-btn dash-dl-btn" data-file="' + e.saved_as + '">&#8595; Download</button></td>' : '<td>—</td>') + '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  if (otherPartials.length) {
     html += '<p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#b45309;margin-bottom:0.5rem;">&#9888; Partial read failures</p>';
     html += '<table class="dash-table" style="margin-bottom:1.25rem;"><thead><tr><th style="width:28px;"><input type="checkbox" onclick="toggleAllChecks(this)"></th><th>Date / Time</th><th>User</th><th>Filename</th><th>Missing data</th><th></th></tr></thead><tbody>';
-    partialFails.slice().reverse().forEach(function(e){
+    otherPartials.slice().reverse().forEach(function(e){
       var _fkey = (e.ts||'') + '||' + (e.user||'');
       html += '<tr><td><input type="checkbox" class="dash-row-cb" value="' + _fkey + '" onchange="updateDeleteBtn()"></td><td>' + toUKTime(e.ts) + '</td><td><span class="user-pill">' + (e.user||'?') + '</span></td><td style="font-size:11px;">' + (e.filename||'') + '</td><td style="font-size:11px;color:#92400e;">' + (e.reason||'') + '</td>' +
         (e.saved_as ? '<td><button class="dash-btn dash-dl-btn" data-file="' + e.saved_as + '">&#8595; Download</button></td>' : '<td>—</td>') + '</tr>';
