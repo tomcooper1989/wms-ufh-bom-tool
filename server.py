@@ -425,10 +425,21 @@ def parse_manifold_loops_by_system(page):
     rows = _mx_rows(words)
     ys = sorted(rows)
 
-    def label_starts(row, w1, w2):
-        return [row[i]['x0'] for i in range(len(row) - 1)
-                if decode_cid(row[i]['text']).strip().lower() == w1
-                and decode_cid(row[i + 1]['text']).strip().lower() == w2]
+    def label_starts(row, joined):
+        """x0 of each occurrence of a label (space-stripped, e.g. 'looplength'),
+        whether it's one word ('LoopLength') or split across words ('Loop' 'Length')."""
+        xs = []
+        n = len(row)
+        for i in range(n):
+            acc = ''
+            for j in range(i, min(i + 4, n)):
+                acc += decode_cid(row[j]['text']).strip().lower()
+                if acc == joined:
+                    xs.append(row[i]['x0'])
+                    break
+                if not joined.startswith(acc):
+                    break
+        return xs
 
     def loop_vals(row):
         out = []
@@ -446,13 +457,14 @@ def parse_manifold_loops_by_system(page):
     for y in ys:
         if not _mx_label(rows[y]).startswith('looplength'):
             continue
-        starts = label_starts(rows[y], 'loop', 'length')
+        starts = label_starts(rows[y], 'looplength')
         if not starts:
             continue
         bounds = starts + [10 ** 9]
         vals = loop_vals(rows[y])
         sys_row = next((rows[y2] for y2 in ys if 0 < y2 - y <= 60
-                        and 'system' in _mx_label(rows[y2]) and 'ambi' in _mx_label(rows[y2])), None)
+                        and _mx_label(rows[y2]).startswith('system')
+                        and _count_systems_in_row(_mx_label(rows[y2]))), None)
         room_row = next((rows[y2] for y2 in reversed(ys) if 0 < y - y2 <= 40
                          and 'roomno' in _mx_label(rows[y2])), None)
         size_row = next((rows[y2] for y2 in ys if 0 < y2 - y <= 45
@@ -505,13 +517,59 @@ def parse_manifold_loops_by_system(page):
     return manifolds, loops
 
 
+_MX_DEC = re.compile(r'^(\d+\.?\d*)$')
+
+
+def _room_areas_from_words(page):
+    """Read room -> {gross, net} by word-column alignment. Handles output tables with
+    no ruling lines (extract_tables misses those), aligning each Room Number to the
+    Net/Gross Floor Area value sitting in the same column."""
+    room_area = {}
+    try:
+        rows = _mx_rows(page.extract_words(x_tolerance=1.5, y_tolerance=2))
+    except Exception:
+        return room_area
+    ys = sorted(rows)
+
+    def cols(row, pat):
+        return [(_mx_cx(w), pat.match(decode_cid(w['text']).strip()).group(1))
+                for w in row if pat.match(decode_cid(w['text']).strip())]
+
+    def nearest_val(vcols, x):
+        best = min(vcols, key=lambda c: abs(c[0] - x), default=None)
+        if best and abs(best[0] - x) < 18:
+            v = float(best[1])
+            if 0 < v < 5000:
+                return round(v, 1)
+        return None
+
+    for y in ys:
+        if not _mx_label(rows[y]).startswith('roomnumber'):
+            continue
+        room_cols = cols(rows[y], _MX_NUM3)
+        if len(room_cols) < 2:
+            continue
+        net_row = next((rows[y2] for y2 in ys if 0 < abs(y2 - y) <= 12
+                        and _mx_label(rows[y2]).startswith('netfloorarea')), None)
+        gross_row = next((rows[y2] for y2 in ys if 0 < abs(y2 - y) <= 12
+                          and _mx_label(rows[y2]).startswith('grossfloorarea')), None)
+        net_cols = cols(net_row, _MX_DEC) if net_row else []
+        gross_cols = cols(gross_row, _MX_DEC) if gross_row else []
+        for x, num in room_cols:
+            g = nearest_val(gross_cols, x)
+            n = nearest_val(net_cols, x)
+            if g is not None or n is not None:
+                room_area.setdefault(num, {'gross': g, 'net': n})
+    return room_area
+
+
 def room_areas_from_page(page):
     """Return {room_number: {'gross','net'}} from the output tables on a page."""
     room_area = {}
     try:
         tables = page.extract_tables()
     except Exception:
-        return room_area
+        tables = []
     for t in tables:
         rr = [[decode_cid(str(c)).strip() if c else '' for c in row] for row in t]
         numrow = next((r for r in rr if sum(1 for c in r[1:] if _MX_NUM3.match(c)) >= 2), None)
@@ -537,6 +595,10 @@ def room_areas_from_page(page):
             if not m:
                 continue
             room_area.setdefault(m.group(1), {'net': av(net_r, j), 'gross': av(gross_r, j)})
+    # Supplement with word-column alignment for line-less tables that extract_tables
+    # can't parse (existing table results take precedence).
+    for rn, area in _room_areas_from_words(page).items():
+        room_area.setdefault(rn, area)
     return room_area
 
 
