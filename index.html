@@ -302,6 +302,7 @@ table.bom tr:hover td { background: var(--bg); }
         <div class="combined-sub">All drawings merged &#8212; same products grouped and totalled</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button id="excl500Btn" onclick="toggle500()" style="font-size:12px;font-weight:600;padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text);cursor:pointer;white-space:nowrap;">Exclude 500 coils?</button>
         <div style="display:flex;align-items:center;gap:8px;">
           <label style="font-size:12px;font-weight:600;color:var(--text-muted);white-space:nowrap;">Pipe method:</label>
           <select id="pipeCombineMethod" onchange="rebuildCombined()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);">
@@ -709,9 +710,24 @@ function updateGrid() {
   renumberPanels();
 }
 
+// Per-drawing quantity selector (default 1). Selecting N multiplies this
+// drawing's picking-list quantities by N.
+function qtyControl(id){
+  var q=(panels[id]&&panels[id].qty)||1, opts='';
+  for(var i=1;i<=20;i++) opts+='<option value="'+i+'"'+(i===q?' selected':'')+'>'+i+'</option>';
+  return '<label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px;white-space:nowrap;">Qty' +
+    '<select onchange="setPanelQty('+id+',this.value)" style="height:24px;border:1px solid var(--border-strong);border-radius:var(--radius);font-size:12px;padding:0 4px;background:var(--surface);color:var(--text);">'+opts+'</select></label>';
+}
+function setPanelQty(id, v){
+  var p=panels[id]; if(!p) return;
+  p.qty = parseInt(v)||1;
+  if(p.bom) generateBOM(id);                       // re-apply multiplier to this list
+  if(document.getElementById('combinedWrap').style.display!=='none') renderCombined();
+}
+
 function createPanel(file) {
   var id = ++panelCount;
-  panels[id] = { loops: [{id:1,len:''}], manifoldLoops: [1], answers: {}, bom: null, ref: file.name, filename: file.name };
+  panels[id] = { loops: [{id:1,len:''}], manifoldLoops: [1], answers: {}, bom: null, ref: file.name, filename: file.name, qty: 1 };
   var grid = document.getElementById('drawingsGrid');
   var div = document.createElement('div');
   div.className = 'panel';
@@ -719,6 +735,7 @@ function createPanel(file) {
   div.innerHTML =
     '<div class="panel-header">' +
       '<span class="panel-title">Design ' + id + '</span>' +
+      qtyControl(id) +
       '<span class="panel-filename">' + file.name + '</span>' +
       '<button class="panel-close" onclick="removePanel(' + id + ')">&times;</button>' +
     '</div>' +
@@ -995,13 +1012,14 @@ async function spawnUnitPanels(id, file, page, selected) {
   for (var i = 1; i < selected.length; i++) {
     var u = selected[i];
     var newId = ++panelCount;
-    panels[newId] = { loops: [{id:1,len:''}], manifoldLoops: [1], answers: {}, bom: null, ref: file.name, filename: file.name };
+    panels[newId] = { loops: [{id:1,len:''}], manifoldLoops: [1], answers: {}, bom: null, ref: file.name, filename: file.name, qty: 1 };
     var div = document.createElement('div');
     div.className = 'panel';
     div.id = 'panel-' + newId;
     div.innerHTML =
       '<div class="panel-header">' +
         '<span class="panel-title">Design ' + newId + '</span>' +
+        qtyControl(newId) +
         '<span class="panel-filename">' + u.unitLabel + '</span>' +
         '<button class="panel-close" onclick="removePanel(' + newId + ')">&times;</button>' +
       '</div>' +
@@ -1061,13 +1079,14 @@ async function spawnFloorPanels(id, file, selected) {
   for (var i = 1; i < selected.length; i++) {
     var fl = selected[i];
     var newId = ++panelCount;
-    panels[newId] = { loops: [{id:1,len:''}], manifoldLoops: [1], answers: {}, bom: null, ref: file.name, filename: file.name };
+    panels[newId] = { loops: [{id:1,len:''}], manifoldLoops: [1], answers: {}, bom: null, ref: file.name, filename: file.name, qty: 1 };
     var div = document.createElement('div');
     div.className = 'panel';
     div.id = 'panel-' + newId;
     div.innerHTML =
       '<div class="panel-header">' +
         '<span class="panel-title">Design ' + newId + '</span>' +
+        qtyControl(newId) +
         '<span class="panel-filename">' + fl.floor_name + '</span>' +
         '<button class="panel-close" onclick="removePanel(' + newId + ')">&times;</button>' +
       '</div>' +
@@ -1372,22 +1391,22 @@ function qb(id, key, q, opts) {
 
 function ceil(a,b){ return Math.ceil(a/b); }
 
+// When _exclude500 is on, 500m coils are never used — the bulk goes into 240m
+// (16mm) / 200m (12mm) coils instead. Pipe method (consolidate/sum) is unaffected.
+var _exclude500 = false;
+
 function pipe16(tm) {
   var r=tm, o={};
-  o.c500=Math.floor(r/500); r-=o.c500*500;
-  o.c240=0;
-  if(r/240>=1){o.c240++;r-=240;}
-  if(r/240>=1){o.c240++;r-=240;}
+  o.c500 = _exclude500 ? 0 : Math.floor(r/500); r-=o.c500*500;
+  o.c240 = Math.floor(r/240); r-=o.c240*240;
   if(r>120){o.c240++;o.c120=0;}else{o.c120=r>0?1:0;}
   return o;
 }
 
 function pipe12(tm) {
   var r=tm, o={};
-  o.c500=Math.floor(r/500); r-=o.c500*500;
-  o.c200=0;
-  if(r/200>=1){o.c200++;r-=200;}
-  if(r/200>=1){o.c200++;r-=200;}
+  o.c500 = _exclude500 ? 0 : Math.floor(r/500); r-=o.c500*500;
+  o.c200 = Math.floor(r/200); r-=o.c200*200;
   if(r>100){o.c200++;o.c100=0;}else{o.c100=r>0?1:0;}
   return o;
 }
@@ -1667,12 +1686,17 @@ function generateBOM(id) {
   var conNote=((sys==='AmbiDeck20'||sys==='AmbiDeck18')&&p.answers.sub==='Concrete')?'<div class="info-box">Note: AmbiBond included \u2014 concrete subfloor selected.</div>':'';
   var castNote=sys==='AmbiCastellated'?'<div class="warn-note">Check Border Edge with Skirt is quoted \u2014 only include if it is.</div>':'';
 
+  // Per-drawing quantity: multiply every line by the selected qty (default 1).
+  var _qty = p.qty || 1;
+  if(_qty>1) bom.forEach(function(r){ r.q = r.q * _qty; });
+
   p.bom=bom; p.ref=ref||p.filename;
 
   var bom2 = [];
   var sys2html = '';
   if (p.sys2 && p.sys2.system_type) {
     bom2 = calcBOM(id, p.sys2, true, !_mixed);
+    if(_qty>1) bom2.forEach(function(r){ r.q = r.q * _qty; });
     p.bom = bom.concat(bom2);
     if (bom2.length) {
       sys2html = '<p class="detect-line" style="margin-top:1rem;padding-top:0.75rem;border-top:1px dashed var(--border-strong);">Second system: ' + (names[p.sys2.system_type]||p.sys2.system_type) + '</p>' +
@@ -1846,7 +1870,7 @@ function renderCombined() {
     if(useConsolidate){
       var pipe16Line=p.bom.filter(function(i){return PIPE16[i.c];})[0];
       var has12=p.bom.some(function(i){return PIPE12[i.c];});
-      var loopTotal=p.loops.reduce(function(a,l){return a+(parseFloat(l.len)||0);},0);
+      var loopTotal=p.loops.reduce(function(a,l){return a+(parseFloat(l.len)||0);},0)*(p.qty||1);
       if(pipe16Line){var sup=PIPE16_SUPPLIER_BY_CODE[pipe16Line.c]||'AmbiFlex';raw16[sup]=(raw16[sup]||0)+loopTotal;}
       if(has12)rawMetres12+=loopTotal;
     }
@@ -1867,10 +1891,9 @@ function renderCombined() {
 function calcCoils16(tm, supplier){
   // Consolidated 16mm pipe keeps its supplier's codes (AmbiFlex default).
   var P=PIPE16_PRODUCTS[supplier]||PIPE16_PRODUCTS.AmbiFlex, r=tm,res=[];
-  var c500=Math.floor(r/500);r-=c500*500;
+  var c500 = _exclude500 ? 0 : Math.floor(r/500); r-=c500*500;
   if(c500>0)res.push({pr:P.name,c:P.c500.c,s:P.c500.s,q:c500});
-  var c240=0;
-  if(r/240>=1){c240++;r-=240;}if(r/240>=1){c240++;r-=240;}
+  var c240=Math.floor(r/240);r-=c240*240;
   if(r>120){c240++;r=0;}
   if(c240>0)res.push({pr:P.name,c:P.c240.c,s:P.c240.s,q:c240});
   if(r>0)res.push({pr:P.name,c:P.c120.c,s:P.c120.s,q:1});
@@ -1879,14 +1902,28 @@ function calcCoils16(tm, supplier){
 
 function calcCoils12(tm){
   var r=tm,res=[];
-  var c500=Math.floor(r/500);r-=c500*500;
+  var c500 = _exclude500 ? 0 : Math.floor(r/500); r-=c500*500;
   if(c500>0)res.push({pr:'12mm AmbiFlex Pipe',c:'30050',s:'12mm AmbiFlex Pipe – 500m Coil',q:c500});
-  var c200=0;
-  if(r/200>=1){c200++;r-=200;}if(r/200>=1){c200++;r-=200;}
+  var c200=Math.floor(r/200);r-=c200*200;
   if(r>100){c200++;r=0;}
   if(c200>0)res.push({pr:'12mm AmbiFlex Pipe',c:'30020',s:'12mm AmbiFlex Pipe – 200m Coil',q:c200});
   if(r>0)res.push({pr:'12mm AmbiFlex Pipe',c:'39000',s:'12mm AmbiFlex Pipe – 100m Coil',q:1});
   return res;
+}
+
+// Toggle the "exclude 500m coils" mode and rebuild every picking list.
+function toggle500(){
+  _exclude500 = !_exclude500;
+  var btn=document.getElementById('excl500Btn');
+  if(btn){
+    btn.textContent = _exclude500 ? '500m coils excluded' : 'Exclude 500 coils?';
+    btn.style.background = _exclude500 ? 'var(--danger)' : 'var(--surface)';
+    btn.style.color = _exclude500 ? '#fff' : 'var(--text)';
+    btn.style.borderColor = _exclude500 ? 'var(--danger)' : 'var(--border-strong)';
+  }
+  // Re-generate each panel's BOM (individual lists) then rebuild the combined list.
+  Object.keys(panels).forEach(function(k){ if(panels[k].bom) generateBOM(parseInt(k)); });
+  if(document.getElementById('combinedWrap').style.display!=='none') renderCombined();
 }
 
 function exportCombined() {
