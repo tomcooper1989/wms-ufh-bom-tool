@@ -302,7 +302,7 @@ table.bom tr:hover td { background: var(--bg); }
         <div class="combined-sub">All drawings merged &#8212; same products grouped and totalled</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <button id="excl500Btn" onclick="toggle500()" style="font-size:12px;font-weight:600;padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text);cursor:pointer;white-space:nowrap;">Exclude 500 coils?</button>
+        <button id="excl500Btn" class="excl500-btn" onclick="toggle500()" style="font-size:12px;font-weight:600;padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text);cursor:pointer;white-space:nowrap;">Exclude 500 coils?</button>
         <div style="display:flex;align-items:center;gap:8px;">
           <label style="font-size:12px;font-weight:600;color:var(--text-muted);white-space:nowrap;">Pipe method:</label>
           <select id="pipeCombineMethod" onchange="rebuildCombined()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);">
@@ -1711,7 +1711,7 @@ function generateBOM(id) {
     '<div style="overflow-x:auto;"><table class="bom"><thead><tr><th>Product</th><th>Code</th><th>Specification</th><th>Qty</th></tr></thead>' +
     '<tbody>'+bom.map(function(r){return '<tr><td>'+r.pr+'</td><td>'+r.c+'</td><td>'+r.s+'</td><td>'+r.q+'</td></tr>';}).join('')+'</tbody></table>' +
     sys2html+'</div>' +
-    '<div class="actions-row"><button class="btn-excel" onclick="exportExcel('+id+')">&#8595; Download Excel</button></div>' +
+    '<div class="actions-row">'+excl500BtnHtml()+'<button class="btn-excel" onclick="exportExcel('+id+')">&#8595; Download Excel</button></div>' +
     conNote+castNote+'</div>';
 
   // Status reflects what the tool read, not what the user corrected
@@ -1911,16 +1911,21 @@ function calcCoils12(tm){
   return res;
 }
 
+// Markup for the "exclude 500m coils" toggle, reflecting current state — used on
+// each individual drawing panel as well as the combined list, all sharing one flag.
+function excl500BtnHtml(){
+  return '<button class="excl500-btn" onclick="toggle500()" style="font-size:12px;font-weight:600;padding:6px 12px;border:1px solid '+(_exclude500?'var(--danger)':'var(--border-strong)')+';border-radius:var(--radius);background:'+(_exclude500?'var(--danger)':'var(--surface)')+';color:'+(_exclude500?'#fff':'var(--text)')+';cursor:pointer;white-space:nowrap;margin-right:8px;">'+(_exclude500?'500m coils excluded':'Exclude 500 coils?')+'</button>';
+}
+
 // Toggle the "exclude 500m coils" mode and rebuild every picking list.
 function toggle500(){
   _exclude500 = !_exclude500;
-  var btn=document.getElementById('excl500Btn');
-  if(btn){
+  document.querySelectorAll('.excl500-btn').forEach(function(btn){
     btn.textContent = _exclude500 ? '500m coils excluded' : 'Exclude 500 coils?';
     btn.style.background = _exclude500 ? 'var(--danger)' : 'var(--surface)';
     btn.style.color = _exclude500 ? '#fff' : 'var(--text)';
     btn.style.borderColor = _exclude500 ? 'var(--danger)' : 'var(--border-strong)';
-  }
+  });
   // Re-generate each panel's BOM (individual lists) then rebuild the combined list.
   Object.keys(panels).forEach(function(k){ if(panels[k].bom) generateBOM(parseInt(k)); });
   if(document.getElementById('combinedWrap').style.display!=='none') renderCombined();
