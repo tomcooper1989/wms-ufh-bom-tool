@@ -736,6 +736,7 @@ function createPanel(file) {
     '<div class="panel-header">' +
       '<span class="panel-title">Design ' + id + '</span>' +
       qtyControl(id) +
+      excl500BtnHtml() +
       '<span class="panel-filename">' + file.name + '</span>' +
       '<button class="panel-close" onclick="removePanel(' + id + ')">&times;</button>' +
     '</div>' +
@@ -1020,6 +1021,7 @@ async function spawnUnitPanels(id, file, page, selected) {
       '<div class="panel-header">' +
         '<span class="panel-title">Design ' + newId + '</span>' +
         qtyControl(newId) +
+        excl500BtnHtml() +
         '<span class="panel-filename">' + u.unitLabel + '</span>' +
         '<button class="panel-close" onclick="removePanel(' + newId + ')">&times;</button>' +
       '</div>' +
@@ -1087,6 +1089,7 @@ async function spawnFloorPanels(id, file, selected) {
       '<div class="panel-header">' +
         '<span class="panel-title">Design ' + newId + '</span>' +
         qtyControl(newId) +
+        excl500BtnHtml() +
         '<span class="panel-filename">' + fl.floor_name + '</span>' +
         '<button class="panel-close" onclick="removePanel(' + newId + ')">&times;</button>' +
       '</div>' +
@@ -1711,7 +1714,7 @@ function generateBOM(id) {
     '<div style="overflow-x:auto;"><table class="bom"><thead><tr><th>Product</th><th>Code</th><th>Specification</th><th>Qty</th></tr></thead>' +
     '<tbody>'+bom.map(function(r){return '<tr><td>'+r.pr+'</td><td>'+r.c+'</td><td>'+r.s+'</td><td>'+r.q+'</td></tr>';}).join('')+'</tbody></table>' +
     sys2html+'</div>' +
-    '<div class="actions-row">'+excl500BtnHtml()+'<button class="btn-excel" onclick="exportExcel('+id+')">&#8595; Download Excel</button></div>' +
+    '<div class="actions-row"><button class="btn-excel" onclick="exportExcel('+id+')">&#8595; Download Excel</button></div>' +
     conNote+castNote+'</div>';
 
   // Status reflects what the tool read, not what the user corrected
