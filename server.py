@@ -549,9 +549,11 @@ def _room_areas_from_words(page):
         room_cols = cols(rows[y], _MX_NUM3)
         if len(room_cols) < 2:
             continue
-        net_row = next((rows[y2] for y2 in ys if 0 < abs(y2 - y) <= 12
+        # 16pt (not 12pt): on some drawings the Gross Floor Area row sits ~12.5pt
+        # below Room Number, just past a tighter cutoff, and was silently dropped.
+        net_row = next((rows[y2] for y2 in ys if 0 < abs(y2 - y) <= 16
                         and _mx_label(rows[y2]).startswith('netfloorarea')), None)
-        gross_row = next((rows[y2] for y2 in ys if 0 < abs(y2 - y) <= 12
+        gross_row = next((rows[y2] for y2 in ys if 0 < abs(y2 - y) <= 16
                           and _mx_label(rows[y2]).startswith('grossfloorarea')), None)
         net_cols = cols(net_row, _MX_DEC) if net_row else []
         gross_cols = cols(gross_row, _MX_DEC) if gross_row else []
@@ -809,12 +811,22 @@ def extract_areas_from_chars_data(chars):
     for idx_r, (y, row_chars) in enumerate(sorted_items):
         row_chars.sort(key=lambda c: c['x0'])
         raw_text = decode_cid(''.join(c['text'] for c in row_chars))
-        is_gross = bool(re.search(r'Gross\s*Floor\s*Area', raw_text, re.IGNORECASE))
-        is_net = bool(re.search(r'Net\s*Floor\s*Area', raw_text, re.IGNORECASE))
-        if is_gross or is_net:
+        label_match = re.search(r'(?:Gross|Net)\s*Floor\s*Area', raw_text, re.IGNORECASE)
+        is_gross = bool(label_match) and label_match.group(0)[0].lower() == 'g'
+        is_net = bool(label_match) and not is_gross
+        if label_match:
             # Clip to the label's own table block first, so margin text sharing this
-            # row (notes, other tables) can't be read as area values.
+            # row (notes, other tables) can't be read as area values. Anchor on the
+            # label's own position, not the row bucket's leftmost char -- a stray
+            # note sharing this row's height would otherwise be treated as the
+            # table's start, clipping the real label/values out before they're read.
+            running = ''
             label_x0 = row_chars[0]['x0']
+            for c in row_chars:
+                if len(running) >= label_match.start():
+                    label_x0 = c['x0']
+                    break
+                running += decode_cid(c['text'])
             tbl_chars = _clip_row_to_table(row_chars, label_x0)
             tbl_text = decode_cid(''.join(c['text'] for c in tbl_chars))
             vals = _parse_area_row(tbl_chars, tbl_text)
