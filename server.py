@@ -13,10 +13,15 @@ import os
 import re
 import tempfile
 import threading
+import uuid
 import webbrowser
 
 PORT = 5000
 TOOL_DIR = os.path.dirname(os.path.abspath(__file__))
+# Generated once per process start -- lets the frontend tell "still the same server process"
+# from "a new one has taken over" (a deploy), so it can prompt for a reload instead of
+# silently running stale JS against a new backend.
+BOOT_ID = uuid.uuid4().hex[:12]
 
 
 def decode_cid(text):
@@ -1760,6 +1765,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_response(400)
             self.end_headers()
             self.wfile.write(b'{"error":"No PDF found"}')
+
+    def do_GET(self):
+        if self.path == "/health":
+            response = json.dumps({"ok": True, "boot_id": BOOT_ID}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", len(response))
+            self.end_headers()
+            self.wfile.write(response)
+            return
+        super().do_GET()
 
     def do_OPTIONS(self):
         self.send_response(200)

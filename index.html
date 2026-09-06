@@ -1943,6 +1943,31 @@ function exportCombined() {
   XLSX.utils.book_append_sheet(wb,ws,'Combined BOM');
   XLSX.writeFile(wb,'UFH_BOM_Combined.xlsx');
 }
+
+// Tells "still the same server process" from "a new one has taken over" (a deploy) so a
+// stale tab prompts for a reload instead of silently running old JS against a new backend.
+var MY_BOOT_ID = null;
+function captureBootId() {
+  fetch('/health', {cache:'no-store'}).then(function(r){return r.json();}).then(function(h){ MY_BOOT_ID = h.boot_id || null; }).catch(function(){});
+}
+function checkForNewVersion() {
+  if (document.getElementById('newVersionBanner')) return;
+  fetch('/health', {cache:'no-store'}).then(function(r){return r.json();}).then(function(h){
+    if (!(h && h.ok && h.boot_id)) return;
+    if (MY_BOOT_ID == null) { MY_BOOT_ID = h.boot_id; return; }
+    if (h.boot_id === MY_BOOT_ID) return;
+    var banner = document.createElement('div');
+    banner.id = 'newVersionBanner';
+    banner.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:4000;background:#0a4d8c;color:#fff;'
+      + 'padding:12px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:13px;'
+      + 'display:flex;align-items:center;gap:12px;max-width:320px';
+    banner.innerHTML = '<span>🔄 A new version of Picking list is available.</span>'
+      + '<button style="background:#fff;color:#0a4d8c;font-weight:700;padding:6px 12px;white-space:nowrap;border-radius:6px" onclick="location.reload()">Reload</button>';
+    document.body.appendChild(banner);
+  }).catch(function(){});
+}
+captureBootId();
+setInterval(checkForNewVersion, 15000);
 </script>
 </body>
 </html>
