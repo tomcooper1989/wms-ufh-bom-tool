@@ -4,13 +4,22 @@ Deployed on Railway. Users access via browser, no local install needed.
 """
 
 from flask import Flask, request, jsonify, send_from_directory, redirect, session
-import os, tempfile, functools, json, datetime, re, contextlib
+import os, tempfile, functools, json, datetime, re, contextlib, uuid
 
 # Import all extraction logic from server.py
 from server import scan_pdf_pages, scan_and_extract, extract_page
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('SECRET_KEY', 'change-this-in-production')
+
+# Lets the frontend tell "still the same deploy" from "a new one has taken over", so it can
+# prompt for a reload instead of silently running stale JS against a new backend. Gunicorn
+# runs 2 workers (see Procfile) that each import this module independently, so a per-process
+# uuid would differ between workers even with NO new deploy -- a request round-robining to
+# the other worker would look like a false "new version" every time. RAILWAY_GIT_COMMIT_SHA
+# is set identically for every worker/replica of one deploy and only changes on a real
+# redeploy; uuid4 is just the local-dev fallback (a single process there, so no mismatch risk).
+BOOT_ID = os.environ.get('RAILWAY_GIT_COMMIT_SHA') or uuid.uuid4().hex[:12]
 
 # Password from environment variable — set in Railway dashboard
 ACCESS_PASSWORD = os.environ.get('ACCESS_PASSWORD', '')
@@ -364,6 +373,11 @@ def dashboard_data():
 # ---------------------------------------------------------------
 # Main app routes
 # ---------------------------------------------------------------
+
+@app.route('/health')
+def health():
+    return jsonify({'ok': True, 'boot_id': BOOT_ID})
+
 
 @app.route('/')
 @login_required
