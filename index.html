@@ -1962,9 +1962,18 @@ function checkForNewVersion() {
       + 'padding:12px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:13px;'
       + 'display:flex;align-items:center;gap:12px;max-width:320px';
     banner.innerHTML = '<span>🔄 A new version of Picking list is available.</span>'
-      + '<button style="background:#fff;color:#0a4d8c;font-weight:700;padding:6px 12px;white-space:nowrap;border-radius:6px" onclick="location.reload()">Reload</button>';
+      + '<button style="background:#fff;color:#0a4d8c;font-weight:700;padding:6px 12px;white-space:nowrap;border-radius:6px" onclick="reloadEverything()">Reload</button>';
     document.body.appendChild(banner);
   }).catch(function(){});
+}
+// When embedded as a Project-tab iframe in The Hub, a plain reload here only refreshes this
+// one iframe -- it leaves The Hub shell and every other open tab/iframe on whatever it had
+// loaded before. Telling the parent to reload itself instead refreshes the whole Hub, which
+// naturally re-fetches every iframe (this one included). Falls back to a normal self-reload
+// when opened standalone (not embedded), where there is no parent to tell.
+function reloadEverything() {
+  if (window.top !== window.self) { try { window.top.postMessage({type:'wms-hub-reload'}, '*'); } catch (e) {} }
+  location.reload();
 }
 captureBootId();
 setInterval(checkForNewVersion, 15000);
