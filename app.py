@@ -415,6 +415,16 @@ def index():
     return send_from_directory('.', 'index.html')
 
 
+@app.route('/hub_user')
+def hub_user():
+    """The name-capture modal (index.html's initName()) checks this before showing itself, so
+    someone arriving via a Hub SSO login never has to type their name -- it's already on the Hub
+    session set by login_required(). Empty when there's no Hub-authenticated session (a direct
+    visitor, or one who typed the ACCESS_PASSWORD by hand), which is exactly when the modal should
+    still ask, same as today."""
+    return jsonify({'name': session.get('hub_user', '')})
+
+
 @app.route('/scan', methods=['POST'])
 @login_required
 def scan():

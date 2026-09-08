@@ -570,10 +570,25 @@ function initName() {
   if (saved) {
     _currentUser = saved;
     showUserChip(saved);
-  } else {
+    return;
+  }
+  // No cached name yet -- before asking, check whether this load came in already identified via
+  // a Hub SSO login (hub_user() in app.py reads it off the session set by login_required()). A
+  // direct visitor with no Hub session just gets '' back and sees the modal exactly as before.
+  fetch('/hub_user').then(function(r){ return r.json(); }).then(function(d){
+    var name = (d && d.name || '').trim();
+    if (name) {
+      _currentUser = name;
+      try { localStorage.setItem('wms_bom_user', name); } catch(e){}
+      showUserChip(name);
+    } else {
+      document.getElementById('nameModal').classList.add('open');
+      setTimeout(function(){ document.getElementById('nameModalInput').focus(); }, 100);
+    }
+  }).catch(function(){
     document.getElementById('nameModal').classList.add('open');
     setTimeout(function(){ document.getElementById('nameModalInput').focus(); }, 100);
-  }
+  });
 }
 
 function saveName() {
