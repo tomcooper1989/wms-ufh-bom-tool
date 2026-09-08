@@ -4,7 +4,7 @@ Deployed on Railway. Users access via browser, no local install needed.
 """
 
 from flask import Flask, request, jsonify, send_from_directory, redirect, session
-import os, tempfile, functools, json, datetime, re, contextlib, uuid
+import os, tempfile, functools, json, datetime, re, contextlib, uuid, hmac, hashlib, base64, time
 
 # Import all extraction logic from server.py
 from server import scan_pdf_pages, scan_and_extract, extract_page
@@ -168,10 +168,40 @@ migrate_legacy_log()
 # Authentication
 # ---------------------------------------------------------------
 
+# Hub SSO -- a short-lived identity token minted by The Hub (app/auth.py's make_sso_token, keyed
+# on HUB_SSO_SECRET) and passed as ?hub_sso=<token> on this tool's iframe URL when opened from
+# there, so someone already signed into the Hub isn't asked for this tool's own password too.
+# Deliberately a SEPARATE secret from the Hub's own session-signing key -- copy the SAME value
+# into both this service's Railway env and the Hub's, the same way MSGRAPH_CLIENT_SECRET already
+# is shared across several of these deployments. Unset (empty string) = feature off, current
+# behaviour unchanged -- this tool's own ACCESS_PASSWORD login stays fully in place either way for
+# anyone who opens it directly rather than through the Hub.
+HUB_SSO_SECRET = os.environ.get('HUB_SSO_SECRET', '')
+
+
+def _verify_hub_sso(token):
+    if not HUB_SSO_SECRET or not token:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(token.encode()).decode()
+        user, exp, sig = raw.rsplit('|', 2)
+        good = hmac.new(HUB_SSO_SECRET.encode(), f'{user}|{exp}'.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(good, sig) or int(exp) < time.time():
+            return None
+        return user
+    except Exception:
+        return None
+
+
 def login_required(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
         if ACCESS_PASSWORD and not session.get('authenticated'):
+            hub_user = _verify_hub_sso(request.args.get('hub_sso'))
+            if hub_user:
+                session['authenticated'] = True
+                session['hub_user'] = hub_user
+                return f(*args, **kwargs)
             return redirect('/login')
         return f(*args, **kwargs)
     return decorated
