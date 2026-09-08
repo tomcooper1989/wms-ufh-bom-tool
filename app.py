@@ -196,11 +196,17 @@ def _verify_hub_sso(token):
 def login_required(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
-        if ACCESS_PASSWORD and not session.get('authenticated'):
+        # Identify via Hub SSO independently of ACCESS_PASSWORD: Tom's own instruction is this
+        # tool should NEVER require a password, only skip the name prompt -- so session['hub_user']
+        # (read by /hub_user, below) must get set even while ACCESS_PASSWORD stays unset/off,
+        # not just when someone's about to be asked for a password.
+        if 'hub_user' not in session:
             hub_user = _verify_hub_sso(request.args.get('hub_sso'))
             if hub_user:
-                session['authenticated'] = True
                 session['hub_user'] = hub_user
+        if ACCESS_PASSWORD and not session.get('authenticated'):
+            if session.get('hub_user'):
+                session['authenticated'] = True
                 return f(*args, **kwargs)
             return redirect('/login')
         return f(*args, **kwargs)
