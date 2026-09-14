@@ -1601,9 +1601,9 @@ var PIPE16_PRODUCTS = {
     c240:{c:'40210',s:'AmbiFlex® P16 – 16mm UFH Pipe, 5 Layer with Oxygen Barrier – 240m'},
     c120:{c:'40200',s:'AmbiFlex® P16 – 16mm UFH Pipe, 5 Layer with Oxygen Barrier – 120m'} },
   TraffiPipe: { name:'16mm TraffiPipe',
-    c500:{c:'40332',s:'TraffiPipe 16mm UFH Pipe – 500m'},
-    c240:{c:'40331',s:'TraffiPipe 16mm UFH Pipe – 240m'},
-    c120:{c:'40330',s:'TraffiPipe 16mm UFH Pipe – 120m'} }
+    c500:{c:'40320',s:'TraffiPipe® T16 – 16mm Ultra Flexible UFH Pipe, 5 Layer with Oxygen Barrier – 500m'},
+    c240:{c:'40310',s:'TraffiPipe® T16 – 16mm Ultra Flexible UFH Pipe, 5 Layer with Oxygen Barrier – 240m'},
+    c120:{c:'40300',s:'TraffiPipe® T16 – 16mm Ultra Flexible UFH Pipe, 5 Layer with Oxygen Barrier – 120m'} }
 };
 var PIPE16_SYSTEMS = ['AmbiTak','AmbiClip','AmbiDuoClip','AmbiPlate','OverDeck20','AmbiDeck20','AmbiCastellated','AmbiFloat10'];
 
@@ -1860,13 +1860,13 @@ function generateAllBOMs() {
 
 // Includes legacy (30xxx) and current AmbiFlex (402xx) + TraffiPipe (403xx) codes
 // so the combined list still recognises 16mm pipe lines to consolidate.
-var PIPE16={'30500':500,'30240':240,'30120':120,'40220':500,'40210':240,'40200':120,'40332':500,'40331':240,'40330':120};
+var PIPE16={'30500':500,'30240':240,'30120':120,'40220':500,'40210':240,'40200':120,'40320':500,'40310':240,'40300':120};
 var PIPE12={'30050':500,'30020':200,'39000':100};
 // Which supplier each 16mm pipe code belongs to, so the combined list keeps
 // TraffiPipe and AmbiFlex as separate products (legacy 30xxx = AmbiFlex).
 var PIPE16_SUPPLIER_BY_CODE={'30500':'AmbiFlex','30240':'AmbiFlex','30120':'AmbiFlex',
   '40220':'AmbiFlex','40210':'AmbiFlex','40200':'AmbiFlex',
-  '40332':'TraffiPipe','40331':'TraffiPipe','40330':'TraffiPipe'};
+  '40320':'TraffiPipe','40310':'TraffiPipe','40300':'TraffiPipe'};
 
 function rebuildCombined(){ renderCombined(); }
 
