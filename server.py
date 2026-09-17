@@ -334,9 +334,11 @@ def detect_system_via_ocr(pdf_path, page_index):
             if _os.path.exists(_tpath):
                 _tess.pytesseract.tesseract_cmd = _tpath
                 break
-        _pages = _pdf2img.convert_from_path(pdf_path, dpi=300,
+        from PIL import ImageEnhance as _IE
+        _pages = _pdf2img.convert_from_path(pdf_path, dpi=400,
                                             first_page=page_index + 1, last_page=page_index + 1)
-        _ocr_text = _tess.image_to_string(_pages[0], config='--psm 6').lower()
+        _img_enhanced = _IE.Contrast(_pages[0].convert('L')).enhance(2)
+        _ocr_text = _tess.image_to_string(_img_enhanced, config='--psm 11').lower()
         _result = detect_system_from_row(_ocr_text) or next(
             (system for keyword, system in SYSTEM_MAP if keyword in _ocr_text), None)
         # TEMP debug: always record the OCR'd text + result so a miss can be compared against
