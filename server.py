@@ -308,6 +308,41 @@ def detect_system(raw_text, pdf_path, page_index):
     return None
 
 
+def detect_system_via_ocr(pdf_path, page_index):
+    """Last-resort system detection for drawings where the system name is only present in a
+    detail-callout label (e.g. "TYPICAL TACKER TYPE UFH INSULATION") that some CAD exports burn
+    in as vector paths rather than real text — pdfplumber then finds nothing at all for it, on
+    an otherwise perfectly text-readable page (areas/loops/manifolds all came through fine).
+
+    This is a DIFFERENT risk profile to the area/loop OCR fallback elsewhere in this file (see
+    CLAUDE.md's "No OCR for area/loop figures"): that decision was about OCR misreading DIGITS,
+    where a wrong number silently drives a wrong quantity. Here we only ever look for a known
+    SYSTEM_MAP keyword in the OCR'd text — the output is a name from a fixed vocabulary, not a
+    read number, so a miss just leaves system_type None exactly as it does today (no regression);
+    it never turns a right number into a wrong one. Never raises — any failure (missing
+    pdf2image/pytesseract, no tesseract binary, OCR error) just means detection stays None."""
+    try:
+        import pdf2image as _pdf2img
+        import pytesseract as _tess
+        import os as _os
+        for _tpath in [
+            r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+            r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+            r'C:\Users\{}\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'.format(
+                _os.environ.get('USERNAME', '')),
+        ]:
+            if _os.path.exists(_tpath):
+                _tess.pytesseract.tesseract_cmd = _tpath
+                break
+        _pages = _pdf2img.convert_from_path(pdf_path, dpi=300,
+                                            first_page=page_index + 1, last_page=page_index + 1)
+        _ocr_text = _tess.image_to_string(_pages[0], config='--psm 6').lower()
+        return detect_system_from_row(_ocr_text) or next(
+            (system for keyword, system in SYSTEM_MAP if keyword in _ocr_text), None)
+    except Exception:
+        return None
+
+
 # Tokens used to count distinct systems within manifold "System" rows.
 # Ordered most-specific first: when a token matches it is consumed from the row
 # so a shorter token (e.g. bare 'ambideck') can't double-count the same text.
@@ -1054,6 +1089,12 @@ def extract_page(pdf_path, page_index, unit_index=None, split_x=None, unit_label
         # Final fallback: use hint from scan (e.g. system detected on another page of same PDF)
         if not system_type and system_type_hint:
             system_type = system_type_hint
+        # Last resort: some drawings burn the system name into a detail-callout label as vector
+        # paths rather than real text (pdfplumber then finds nothing for it at all, even though
+        # the rest of the page reads fine) — OCR just that one keyword. See detect_system_via_ocr's
+        # docstring for why this is a different, much lower-risk case than the area/loop OCR debate.
+        if not system_type:
+            system_type = detect_system_via_ocr(pdf_path, page_index)
 
         # Unsupported systems: the tool has no BOM rules for these, so it must NOT map
         # them to a similar-but-wrong product (e.g. Ambi-float 30 -> AmbiFloat 10, which
