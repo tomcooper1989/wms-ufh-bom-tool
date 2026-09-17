@@ -341,8 +341,17 @@ def detect_system_via_ocr(pdf_path, page_index):
             (system for keyword, system in SYSTEM_MAP if keyword in _ocr_text), None)
     except Exception as e:
         import traceback
-        print("detect_system_via_ocr failed:", repr(e))
-        traceback.print_exc()
+        # Written to the shared /data volume, not a module global — gunicorn's 2 worker
+        # PROCESSES don't share memory, so a global here would only be visible to whichever
+        # worker happened to handle the NEXT debug-read request, not necessarily the one that hit
+        # the error. TEMP, while diagnosing the new OCR fallback in production.
+        for _dir in ("/data", "."):
+            try:
+                with open(os.path.join(_dir, "_last_ocr_error.txt"), "w") as _f:
+                    _f.write("".join(traceback.format_exception(type(e), e, e.__traceback__)))
+                break
+            except Exception:
+                continue
         return None
 
 
