@@ -415,17 +415,6 @@ def health():
     return jsonify({'ok': True, 'boot_id': BOOT_ID})
 
 
-@app.route('/api/_debug_ocr_error')
-def _debug_ocr_error():
-    # TEMP, diagnosing the new OCR system-detection fallback in production — remove once resolved.
-    for _dir in ("/data", "."):
-        _p = os.path.join(_dir, "_last_ocr_error.txt")
-        if os.path.exists(_p):
-            with open(_p) as _f:
-                return jsonify({'last_ocr_error': _f.read()})
-    return jsonify({'last_ocr_error': None})
-
-
 @app.route('/')
 @login_required
 def index():
