@@ -339,7 +339,10 @@ def detect_system_via_ocr(pdf_path, page_index):
         _ocr_text = _tess.image_to_string(_pages[0], config='--psm 6').lower()
         return detect_system_from_row(_ocr_text) or next(
             (system for keyword, system in SYSTEM_MAP if keyword in _ocr_text), None)
-    except Exception:
+    except Exception as e:
+        import traceback
+        print("detect_system_via_ocr failed:", repr(e))
+        traceback.print_exc()
         return None
 
 
