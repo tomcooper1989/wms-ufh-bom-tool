@@ -561,6 +561,14 @@ function exportDashCSV() {
   var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'WMS_BOM_Usage.csv'; a.click();
 }
 
+// Set only when opened from inside The Hub's Project tab (?wso=...), which points its iframe here
+// so a generated picking list can be reported back for that project's own "created" list -- see
+// generateBOM()'s postMessage below. Blank (and the postMessage skipped entirely) for anyone using
+// this tool standalone; it otherwise has no idea what "project" means and never will.
+var HUB_WSO = (function(){
+  try { return new URLSearchParams(location.search).get('wso') || ''; } catch(e) { return ''; }
+})();
+
 // ── Name capture ──
 var _currentUser = '';
 
@@ -1740,6 +1748,16 @@ function generateBOM(id) {
   if (_status === 'partial') {
     var _failFile = p._file || { name: (p.floor_name || 'unknown') + '.pdf' };
     logFailure(_failFile, _readWarnings.join('; '), 'partial');
+  }
+  // Report back to The Hub (only when opened from inside its Project tab -- see HUB_WSO above) so
+  // this picking list shows up on that project's own "created" list there, with a Push-to-ERP
+  // button next to it. This tool has no backend link to the Hub at all, so postMessage to the
+  // parent window is the only channel there is; best-effort and silent on any failure.
+  if (HUB_WSO && window.parent !== window && p.bom && p.bom.length) {
+    try {
+      window.parent.postMessage({type: 'bom_generated', wso: HUB_WSO, floor: p.floor_name || '',
+        system: names[sys] || sys, ref: ref || p.project_ref || '', items: p.bom}, '*');
+    } catch (e) {}
   }
 
   if(Object.values(panels).some(function(x){return x.bom&&x.bom.length>0;}))
