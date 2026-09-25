@@ -311,6 +311,10 @@ table.bom tr:hover td { background: var(--bg); }
         <div class="combined-title">Push to ERP</div>
         <div class="combined-sub">Send a picking list's items into Enapps as Project Order Lines &#8212; same import Hub's own Push-to-ERP uses</div>
       </div>
+      <div style="text-align:right;">
+        <button type="button" onclick="erpCheckStatus()" style="background:none;border:none;color:var(--text-muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:0;">Check Enapps connection (REST)</button>
+        <div id="erpStatusResult" style="font-size:11px;margin-top:3px;"></div>
+      </div>
     </div>
     <div style="margin-bottom:1rem;">
       <div id="erpWsoInputBlock">
@@ -2125,6 +2129,17 @@ function erpRemoveLine(code) {
   erpUpdateProducts();
 }
 
+// Deliberately REST-only (see erp_connector.status()'s own docstring) -- distinguishes "the token
+// can't authenticate at all" from "it authenticates but this account's Postgres-view grant is
+// missing/wrong", which erpLookupProject's own custom_view-based failures can't tell apart alone.
+function erpCheckStatus() {
+  var box = document.getElementById('erpStatusResult');
+  box.textContent = 'Checking…'; box.style.color = 'var(--text-muted)';
+  fetch('/api/erp/status').then(function(r){ return r.json(); }).then(function(res){
+    if (res.connected) { box.textContent = '✓ ' + res.message; box.style.color = 'var(--success)'; }
+    else { box.textContent = '✖ ' + res.message; box.style.color = 'var(--warn-text)'; }
+  }).catch(function(){ box.textContent = 'Check failed — see server logs.'; box.style.color = 'var(--warn-text)'; });
+}
 function erpLookupProject() {
   var input = document.getElementById('erpProjectId');
   var hint = document.getElementById('erpProjectIdHint');

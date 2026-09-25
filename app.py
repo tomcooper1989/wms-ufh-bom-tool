@@ -504,6 +504,17 @@ def _handle_pdf_request(endpoint):
 # the user typed directly, on every push -- see erp_connector.py's module docstring).
 # ---------------------------------------------------------------
 
+@app.route('/api/erp/status')
+@login_required
+def api_erp_status():
+    """Live REST-only connection check (troubleshooting) -- see erp_connector.status()'s own
+    docstring for why this deliberately avoids custom_view."""
+    try:
+        return jsonify(erp_connector.status())
+    except Exception as e:
+        return jsonify({'configured': True, 'connected': False, 'message': str(e)})
+
+
 @app.route('/api/erp/project_by_wso')
 @login_required
 def api_erp_project_by_wso():

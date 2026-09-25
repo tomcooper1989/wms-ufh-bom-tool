@@ -100,6 +100,44 @@ def _token():
         return tok
 
 
+def _records(res):
+    """Pull the list of records out of whatever envelope the API used."""
+    if isinstance(res, list):
+        return res
+    if isinstance(res, dict):
+        d = res.get("data", res)
+        if isinstance(d, list):
+            return d
+        if isinstance(d, dict):
+            for v in d.values():
+                if isinstance(v, list):
+                    return v
+    return []
+
+
+def get_orders(params=None):
+    return _send("/api/v1/orders/", "GET", token=_token(), params=params)
+
+
+def status():
+    """Live connection check -- is it configured AND actually responding right now? Deliberately
+    hits the plain REST orders endpoint, NOT custom_view -- Enapps' Postgres-view feature is a
+    separate per-API-user grant (Settings > Users > Postgres views) from ordinary REST access, so a
+    token can authenticate fine here while still 401ing on custom_view (or the other way round) --
+    this is how the two get told apart instead of guessed at. Returns {configured, connected,
+    message}. Ported from Hub's own erp_connector.status(), same reasoning."""
+    if not is_configured():
+        return {"configured": False, "connected": False, "message": "ERP not configured — set ENAPPS_URL + ENAPPS_ACCESS_TOKEN."}
+    try:
+        recs = _records(get_orders({"page": 1, "per_page": 1}))
+        newest = str(recs[0].get("name")) if recs else None
+        return {"configured": True, "connected": True,
+                "message": "Connected (REST)" + (f" · newest order {newest}" if newest else "")}
+    except Exception as e:
+        return {"configured": True, "connected": False,
+                "message": f"REST API not responding: {str(e)[:160]}"}
+
+
 def custom_view(table_name):
     """GET /api/v1/custom_view?table_name=<view> — a read-only Postgres view connected to the API
     user (Enapps admin: Settings > Users > Postgres views). Used here only to resolve a WSO to its
