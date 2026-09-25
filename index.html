@@ -159,6 +159,14 @@ table.bom tr:hover td { background: var(--bg); }
   <button class="btn-settings" title="Settings" onclick="openDashboard()">⚙</button>
 </header>
 
+<!-- What's actually been pushed to Enapps for this project, and when -- so nobody has to guess
+     or re-push by mistake. Hidden until there's a resolved project id to look up (see
+     refreshSentHistory) and until it actually finds anything for it. -->
+<div id="sentHistoryBar" style="display:none;background:#eff6ff;border-bottom:2px solid var(--accent);padding:0.75rem 2rem;font-size:12.5px;">
+  <div style="font-weight:700;color:var(--text);margin-bottom:4px;">Sent to ERP</div>
+  <div id="sentHistoryList"></div>
+</div>
+
 <!-- Name capture modal -->
 <div class="name-modal-overlay" id="nameModal">
   <div class="name-modal-box">
@@ -275,6 +283,20 @@ table.bom tr:hover td { background: var(--bg); }
   <div class="drawings-grid" id="drawingsGrid"></div>
 </div>
 
+<div class="combined-wrap" id="pushSeparateWrap" style="display:none;">
+  <div class="combined-inner">
+    <div class="combined-header">
+      <div>
+        <div class="combined-title">Push separate Pick List(s) to ERP</div>
+        <div class="combined-sub">Each drawing above goes to Enapps as its own, separate set of lines &#8212; not merged with the others</div>
+      </div>
+      <div>
+        <button class="btn-excel" onclick="pushSeparateToErp()" style="background:var(--success);border-color:var(--success);color:#fff;">&#128640; Push separate Pick List(s) to ERP</button>
+      </div>
+    </div>
+    <div id="separatePushResults" style="font-size:12px;"></div>
+  </div>
+</div>
 
 <div class="combined-wrap" id="combinedWrap">
   <div class="combined-inner">
@@ -297,10 +319,14 @@ table.bom tr:hover td { background: var(--bg); }
     </div>
     <div style="overflow-x:auto;">
       <table class="bom">
-        <thead><tr><th>Product</th><th>Code</th><th>Specification</th><th>Qty</th></tr></thead>
+        <thead><tr><th>Product</th><th>Code</th><th>Specification</th><th>Qty</th><th></th></tr></thead>
         <tbody id="combinedBody"></tbody>
       </table>
     </div>
+    <div class="actions-row" style="margin-top:0.75rem;">
+      <button class="btn-excel" onclick="pushCombinedToErp()" style="background:var(--success);border-color:var(--success);color:#fff;">&#128640; Push Combined to ERP</button>
+    </div>
+    <div id="combinedPushResult" style="display:none;font-size:12px;margin-top:8px;"></div>
   </div>
 </div>
 
@@ -837,6 +863,9 @@ function clearAll() {
   document.getElementById('progressPills').innerHTML = '';
   document.getElementById('combinedWrap').style.display = 'none';
   document.getElementById('combinedBody').innerHTML = '';
+  document.getElementById('pushSeparateWrap').style.display = 'none';
+  document.getElementById('separatePushResults').innerHTML = '';
+  COMBINED_OMIT.clear(); COMBINED_EXTRA.length = 0;
   document.getElementById('erpWrap').style.display = 'none';
   document.getElementById('erpProjectId').value = '';
   document.getElementById('erpProjectIdHint').textContent = "Enter the WSO — it's looked up on Enapps and resolved to its own full project name automatically.";
@@ -1768,29 +1797,26 @@ function generateBOM(id) {
   var _qty = p.qty || 1;
   if(_qty>1) bom.forEach(function(r){ r.q = r.q * _qty; });
 
-  p.bom=bom; p.ref=ref||p.filename;
+  p.ref=ref||p.filename;
 
   var bom2 = [];
-  var sys2html = '';
   if (p.sys2 && p.sys2.system_type) {
     bom2 = calcBOM(id, p.sys2, true, !_mixed);
     if(_qty>1) bom2.forEach(function(r){ r.q = r.q * _qty; });
-    p.bom = bom.concat(bom2);
-    if (bom2.length) {
-      sys2html = '<p class="detect-line" style="margin-top:1rem;padding-top:0.75rem;border-top:1px dashed var(--border-strong);">Second system: ' + (names[p.sys2.system_type]||p.sys2.system_type) + '</p>' +
-        '<table class="bom" style="margin-top:0.4rem;"><thead><tr><th>Product</th><th>Code</th><th>Specification</th><th>Qty</th></tr></thead>' +
-        '<tbody>'+bom2.map(function(r){return '<tr><td>'+r.pr+'</td><td>'+r.c+'</td><td>'+r.s+'</td><td>'+r.q+'</td></tr>';}).join('')+'</tbody></table>';
-    }
-  } else {
-    p.bom = bom;
   }
+  // Kept unmerged (and every other display bit generateBOM derives) on the panel itself so an
+  // edit (omit/add a line) -- or a later re-generate from an answer change -- can redraw and
+  // recompute p.bom from here without discarding it, same reasoning as toggle500()'s own note.
+  p._bomPrimary = bom; p._bomSecondary = bom2;
+  p._sysLabel = names[sys] + (ref ? ' \u2013 ' + ref : '');
+  p._sys2Label = (p.sys2 && p.sys2.system_type) ? (names[p.sys2.system_type] || p.sys2.system_type) : '';
+  p._conNote = conNote; p._castNote = castNote;
+  if (!p.omit) p.omit = new Set();
+  if (!p.omit2) p.omit2 = new Set();   // second-system table's own omissions, kept separate
+  if (!p.extra) p.extra = [];
+  p.bom = panelEffectiveRows(p);
 
-  out.innerHTML='<div class="bom-section"><p class="detect-line">I have detected '+names[sys]+(ref?' \u2013 '+ref:'')+'</p>' +
-    '<div style="overflow-x:auto;"><table class="bom"><thead><tr><th>Product</th><th>Code</th><th>Specification</th><th>Qty</th></tr></thead>' +
-    '<tbody>'+bom.map(function(r){return '<tr><td>'+r.pr+'</td><td>'+r.c+'</td><td>'+r.s+'</td><td>'+r.q+'</td></tr>';}).join('')+'</tbody></table>' +
-    sys2html+'</div>' +
-    '<div class="actions-row"><button class="btn-excel" onclick="exportExcel('+id+')">&#8595; Download Excel</button></div>' +
-    conNote+castNote+'</div>';
+  renderPanelBom(id);
 
   // Status reflects what the tool read, not what the user corrected
   var _readWarnings = p._warnings || [];
@@ -1816,8 +1842,109 @@ function generateBOM(id) {
   // click through first.
   if(Object.values(panels).some(function(x){return x.bom&&x.bom.length>0;})){
     document.getElementById('combinedWrap').style.display='block';
+    document.getElementById('pushSeparateWrap').style.display='block';
     renderCombined();
   }
+}
+
+// The panel's own edited, flat line list -- p.bom, read by everything downstream (Combined,
+// Export Excel, Push separate/Combined, the Hub postMessage), is always this recomputed fresh
+// after any edit, rather than mutated in place, so there is exactly one place the omit/extra
+// logic lives.
+function panelEffectiveRows(p) {
+  var primary = (p._bomPrimary||[]).filter(function(r){ return !p.omit.has(r.c||r.pr); });
+  var secondary = (p._bomSecondary||[]).filter(function(r){ return !p.omit2.has(r.c||r.pr); });
+  return primary.concat(secondary).concat(p.extra||[]);
+}
+
+// Shared by every editable BOM table (a panel's own primary/secondary tables, and the Combined
+// Picking List) -- one row per item with a trailing remove button, plus one "+ Add line" row.
+// removeFnName/addFnName are plain function names ('panelOmitLine' / 'combinedOmitLine' etc.);
+// extraArg is a already-comma-terminated leading argument ('5,' for a panel's id, '' for the
+// (single, global) Combined list) so both callbacks can be built as one plain function call
+// without any bind()/closure gymnastics inline in the markup.
+// Just the <tr>s (rows + one "+ Add line" row) -- for dropping straight into an EXISTING
+// <tbody> (the Combined Picking List's own, whose surrounding table/controls/id must survive
+// repeated re-renders, e.g. clearAll()'s own document.getElementById('combinedBody') reset).
+function editableBomRowsHtml(rows, tableId, removeFnName, addFnName, extraArg) {
+  extraArg = extraArg || '';
+  var body = rows.map(function(r){
+    var code = erpAttrEsc(r.c||r.pr).replace(/'/g,"\\'");
+    return '<tr><td>'+erpEsc(r.pr)+'</td><td>'+erpEsc(r.c)+'</td><td>'+erpEsc(r.s)+'</td><td>'+r.q+'</td>'+
+      '<td style="text-align:center;"><button type="button" class="erp-remove-btn" onclick="'+removeFnName+'('+extraArg+'\''+code+'\')" title="Remove this line" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;">&times;</button></td></tr>';
+  }).join('');
+  var addRow = '';
+  if (addFnName) {
+    addRow = '<tr id="'+tableId+'-addrow"><td colspan="5" style="padding:6px 8px;">'+
+      '<a href="#" onclick="event.preventDefault();showAddLineForm(\''+tableId+'\')" style="font-size:12px;color:var(--accent);text-decoration:none;">+ Add line</a>'+
+      '<span id="'+tableId+'-addform" style="display:none;margin-top:6px;">'+
+        '<input type="text" placeholder="Description" id="'+tableId+'-desc" style="width:32%;margin-right:4px;padding:4px 6px;font-size:12px;">'+
+        '<input type="text" placeholder="Code" id="'+tableId+'-code" style="width:18%;margin-right:4px;padding:4px 6px;font-size:12px;">'+
+        '<input type="number" placeholder="Qty" id="'+tableId+'-qty" value="1" min="1" style="width:12%;margin-right:4px;padding:4px 6px;font-size:12px;">'+
+        '<button type="button" onclick="'+addFnName+'('+extraArg+'\''+tableId+'\')" style="font-size:12px;padding:4px 10px;">Add</button> '+
+        '<a href="#" onclick="event.preventDefault();hideAddLineForm(\''+tableId+'\')" style="font-size:12px;color:var(--text-muted);">Cancel</a>'+
+      '</span></td></tr>';
+  }
+  return body + addRow;
+}
+
+// Full standalone table (thead+tbody) -- for a panel's own output, which is rebuilt wholesale on
+// every generate/edit anyway (renderPanelBom replaces out-<id>'s entire innerHTML each time).
+function editableBomTableHtml(rows, tableId, removeFnName, addFnName, extraArg) {
+  return '<table class="bom"><thead><tr><th>Product</th><th>Code</th><th>Specification</th><th>Qty</th><th></th></tr></thead>'+
+    '<tbody>'+editableBomRowsHtml(rows, tableId, removeFnName, addFnName, extraArg)+'</tbody></table>';
+}
+
+function showAddLineForm(tableId){ var f=document.getElementById(tableId+'-addform'); if(f) f.style.display='inline'; }
+function hideAddLineForm(tableId){ var f=document.getElementById(tableId+'-addform'); if(f) f.style.display='none'; }
+function readAddLineForm(tableId){
+  var desc=(document.getElementById(tableId+'-desc').value||'').trim();
+  var code=(document.getElementById(tableId+'-code').value||'').trim();
+  var qty=parseInt(document.getElementById(tableId+'-qty').value,10)||1;
+  if(!desc && !code) return null;
+  return {pr:desc||code, c:code, s:desc||code, q:qty};
+}
+
+function panelOmitLine(id, code){
+  var p=panels[id]; if(!p) return;
+  p.omit.add(code);
+  p.bom = panelEffectiveRows(p);
+  renderPanelBom(id);
+  if(document.getElementById('combinedWrap').style.display!=='none') renderCombined();
+}
+function panelOmitLine2(id, code){
+  var p=panels[id]; if(!p) return;
+  p.omit2.add(code);
+  p.bom = panelEffectiveRows(p);
+  renderPanelBom(id);
+  if(document.getElementById('combinedWrap').style.display!=='none') renderCombined();
+}
+function panelAddLine(id, tableId){
+  var p=panels[id]; if(!p) return;
+  var row=readAddLineForm(tableId); if(!row) return;
+  p.extra.push(row);
+  p.bom = panelEffectiveRows(p);
+  renderPanelBom(id);
+  if(document.getElementById('combinedWrap').style.display!=='none') renderCombined();
+}
+
+// Redraws panel id's output purely from what generateBOM already stashed on it (_bomPrimary/
+// _bomSecondary/omit/omit2/extra) -- never re-runs calcBOM, so an edit here can never be
+// clobbered by (or itself clobber) the drawing's own detected values.
+function renderPanelBom(id){
+  var p=panels[id]; var out=document.getElementById('out-'+id); if(!p||!out) return;
+  var primaryRows = (p._bomPrimary||[]).filter(function(r){ return !p.omit.has(r.c||r.pr); }).concat(p.extra||[]);
+  var secondaryRows = (p._bomSecondary||[]).filter(function(r){ return !p.omit2.has(r.c||r.pr); });
+  var sys2html='';
+  if(p._bomSecondary && p._bomSecondary.length){
+    sys2html = '<p class="detect-line" style="margin-top:1rem;padding-top:0.75rem;border-top:1px dashed var(--border-strong);">Second system: '+p._sys2Label+'</p>'+
+      editableBomTableHtml(secondaryRows, 'panel'+id+'sys2', 'panelOmitLine2', null, id+',');
+  }
+  out.innerHTML='<div class="bom-section"><p class="detect-line">I have detected '+p._sysLabel+'</p>'+
+    '<div style="overflow-x:auto;">'+editableBomTableHtml(primaryRows, 'panel'+id, 'panelOmitLine', 'panelAddLine', id+',')+'</div>'+
+    sys2html+
+    '<div class="actions-row"><button class="btn-excel" onclick="exportExcel('+id+')">&#8595; Download Excel</button></div>'+
+    p._conNote+p._castNote+'</div>';
 }
 
 function er(msg){return '<div class="err-box">'+msg+'</div>';}
@@ -1970,13 +2097,22 @@ function computeCombinedBom(allPanels) {
   return Object.values(merged);
 }
 
+function combinedOmitLine(code){
+  COMBINED_OMIT.add(code);
+  renderCombined();
+}
+function combinedAddLine(tableId){
+  var row=readAddLineForm(tableId); if(!row) return;
+  COMBINED_EXTRA.push(row);
+  renderCombined();
+}
+
 function renderCombined() {
   var allPanels=Object.values(panels).filter(function(p){return p.bom&&p.bom.length>0;});
   if(!allPanels.length)return;
-  var rows=computeCombinedBom(allPanels);
-  document.getElementById('combinedBody').innerHTML=rows.map(function(r){
-    return '<tr><td>'+r.pr+'</td><td>'+r.c+'</td><td>'+r.s+'</td><td>'+r.q+'</td></tr>';
-  }).join('');
+  var rows=computeCombinedBom(allPanels).filter(function(r){ return !COMBINED_OMIT.has(r.c||r.pr); }).concat(COMBINED_EXTRA);
+  document.getElementById('combinedBody').innerHTML=
+    editableBomRowsHtml(rows, 'combined', 'combinedOmitLine', 'combinedAddLine');
   window._combinedBom=rows;
   erpRenderListPicker();
 }
@@ -2046,6 +2182,12 @@ function exportCombined() {
 // both 0 (this is a stock picking list, not a priced sale).
 var ERP_EXCLUDED_CODES = new Set();   // codes the user has explicitly x'd off this push.
 var ERP_WSO_AUTOFILLED = false;       // only auto-fill the WSO field once per session.
+// Combined Picking List's own edits -- layered on top of computeCombinedBom()'s (already
+// per-panel-corrected, since it reads each panel's own edited p.bom) output. Separate from
+// ERP_EXCLUDED_CODES above, which is the bottom "Push to ERP" panel's own, older, independent
+// tick-list-driven workflow -- left exactly as it was.
+var COMBINED_OMIT = new Set();
+var COMBINED_EXTRA = [];
 
 function erpExtractWsoFromFilename(name) {
   var m = /WSO\d+(?:-[A-Za-z0-9]+)?/i.exec(name || '');
@@ -2093,6 +2235,7 @@ function erpRenderListPicker() {
         // lookup when the Hub hasn't resolved a name yet (e.g. never pulled from ERP on that record).
         if (typeof HUB_PROJECT_NAME !== 'undefined' && HUB_PROJECT_NAME) {
           pidInput.value = HUB_PROJECT_NAME;
+          refreshSentHistory();
         } else {
           pidInput.value = HUB_WSO;
           erpLookupProject();
@@ -2160,6 +2303,25 @@ function erpCheckStatus() {
     else { box.textContent = '✖ ' + res.message; box.style.color = 'var(--warn-text)'; }
   }).catch(function(){ box.textContent = 'Check failed — see server logs.'; box.style.color = 'var(--warn-text)'; });
 }
+// Populates the top-of-page "Sent to ERP" bar for whatever project is currently resolved --
+// called once the project id is known (auto-fill, a successful "Find on Enapps", or right after
+// any push) so it always reflects the current project without the user asking for it.
+function refreshSentHistory() {
+  var project_id = (document.getElementById('erpProjectId').value || '').trim();
+  var bar = document.getElementById('sentHistoryBar'), list = document.getElementById('sentHistoryList');
+  if (!project_id) { bar.style.display = 'none'; return; }
+  fetch('/api/erp/push_log?project_id=' + encodeURIComponent(project_id)).then(function(r){ return r.json(); }).then(function(res){
+    var entries = res.entries || [];
+    if (!entries.length) { bar.style.display = 'none'; return; }
+    list.innerHTML = entries.map(function(e){
+      var mark = e.ok ? '✓' : '✖';
+      var color = e.ok ? 'var(--success)' : 'var(--warn-text)';
+      return '<div style="color:'+color+';">'+mark+' '+erpEsc(e.ref||'Combined')+' — '+e.line_count+' line(s) — '+erpEsc(e.ts||'')+(e.user?' by '+erpEsc(e.user):'')+(e.error?' — '+erpEsc(e.error):'')+'</div>';
+    }).join('');
+    bar.style.display = 'block';
+  }).catch(function(){ bar.style.display = 'none'; });
+}
+
 function erpLookupProject() {
   var input = document.getElementById('erpProjectId');
   var hint = document.getElementById('erpProjectIdHint');
@@ -2174,6 +2336,7 @@ function erpLookupProject() {
     if (res.name) {
       input.value = res.name;
       hint.textContent = '✓ Auto-found from Enapps — check it’s right before pushing.'; hint.style.color = 'var(--success)';
+      refreshSentHistory();
     } else if (res.error) {
       // A real backend failure (view error, auth, timeout...) previously came back here exactly the
       // same as a genuine "not found" -- this code only ever checked res.name, never res.error -- so
@@ -2189,12 +2352,10 @@ function erpLookupProject() {
   });
 }
 
-function erpSend(dryRun) {
-  var rows = window._erpPushRows || [];
-  var resEl = document.getElementById('erpResult');
-  if (!rows.length) { resEl.style.display = 'block'; resEl.textContent = 'Tick at least one picking list first.'; return; }
-  // No separate Enapps product ref to fill in -- every line's own WMS code IS the Enapps product
-  // reference, and this is a stock picking list (not a priced sale), so sale_price is always 0.
+// Shared by all three Push-to-ERP buttons (this bottom panel, Separate, Combined) -- every
+// line's own WMS code IS the Enapps product reference (no separate ref to fill in), and this is
+// a stock picking list (not a priced sale), so sale_price is always 0.
+function buildErpItems(rows) {
   var items = {}, erp_products = {};
   rows.forEach(function(r){
     var code = (r.c || r.pr || '').trim();
@@ -2202,6 +2363,25 @@ function erpSend(dryRun) {
     items[code] = {description: r.s || r.pr || '', qty: r.q};
     erp_products[code] = {product_id: code, sale_price: 0};
   });
+  return {items: items, erp_products: erp_products};
+}
+
+// One real POST to /api/erp/push -- ref names which picking list this is for the server-side
+// history log only (never sent to Enapps itself). Returns the fetch promise so callers needing
+// to run several of these in sequence (pushSeparateToErp) can await each one in turn.
+function postErpPush(rows, project_id, dry_run, ref) {
+  var built = buildErpItems(rows);
+  return fetch('/api/erp/push', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({project_id: project_id, items: built.items, erp_products: built.erp_products,
+      dry_run: dry_run, user: getCurrentUser(), ref: ref})
+  }).then(function(r){ return r.json(); });
+}
+
+function erpSend(dryRun) {
+  var rows = window._erpPushRows || [];
+  var resEl = document.getElementById('erpResult');
+  if (!rows.length) { resEl.style.display = 'block'; resEl.textContent = 'Tick at least one picking list first.'; return; }
   var project_id = document.getElementById('erpProjectId').value.trim();
   resEl.style.display = 'block';
   resEl.innerHTML = dryRun ? 'Building preview…' : 'Pushing to Enapps…';
@@ -2209,17 +2389,66 @@ function erpSend(dryRun) {
   // Enapps page once the push comes back -- opening it only after the (async) response arrives
   // is exactly what browsers treat as an unrequested popup and silently block.
   var pendingWin = dryRun ? null : window.open('', '_blank');
-  fetch('/api/erp/push', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({project_id: project_id, items: items, erp_products: erp_products, dry_run: dryRun})
-  }).then(function(r){ return r.json(); }).then(function(res){
+  postErpPush(rows, project_id, dryRun, 'Combined (ticked lists)').then(function(res){
     erpRenderResult(res, dryRun, project_id);
     if (res.project_url && pendingWin) pendingWin.location = res.project_url;
     else if (pendingWin) pendingWin.close();
+    if (!dryRun) refreshSentHistory();
   }).catch(function(e){
     resEl.textContent = 'Request failed: ' + e;
     if (pendingWin) pendingWin.close();
   });
+}
+
+// "Push Combined to ERP" -- one push, the Combined Picking List's own current (edited) rows.
+function pushCombinedToErp() {
+  var rows = window._combinedBom || [];
+  var resEl = document.getElementById('combinedPushResult');
+  if (!rows.length) { resEl.style.display = 'block'; resEl.textContent = 'Nothing to push yet.'; return; }
+  var project_id = document.getElementById('erpProjectId').value.trim();
+  resEl.style.display = 'block';
+  resEl.innerHTML = 'Pushing to Enapps…';
+  var pendingWin = window.open('', '_blank');
+  postErpPush(rows, project_id, false, 'Combined').then(function(res){
+    erpRenderResult(res, false, project_id, 'combinedPushResult');
+    if (res.project_url && pendingWin) pendingWin.location = res.project_url;
+    else if (pendingWin) pendingWin.close();
+    refreshSentHistory();
+  }).catch(function(e){
+    resEl.textContent = 'Request failed: ' + e;
+    if (pendingWin) pendingWin.close();
+  });
+}
+
+// "Push separate Pick List(s) to ERP" -- one push PER drawing (its own p.bom, edits included),
+// run one after another (not in parallel -- Enapps' own import chain is not something to hit
+// with several concurrent requests at once), each with its own result line as it completes.
+function pushSeparateToErp() {
+  var resEl = document.getElementById('separatePushResults');
+  var project_id = document.getElementById('erpProjectId').value.trim();
+  var entries = Object.values(panels).filter(function(p){ return p.bom && p.bom.length; });
+  if (!entries.length) { resEl.innerHTML = 'No picking lists with lines yet.'; return; }
+  resEl.innerHTML = '';
+  entries.reduce(function(chain, p){
+    return chain.then(function(){
+      var label = p.ref || p.filename || 'Untitled';
+      var row = document.createElement('div');
+      row.textContent = 'Pushing ' + label + '…';
+      resEl.appendChild(row);
+      return postErpPush(p.bom, project_id, false, label).then(function(res){
+        var errMsg = res.error || null;
+        if (!errMsg && res.result && typeof res.result === 'object') {
+          if (res.result.error) errMsg = res.result.error.message || JSON.stringify(res.result.error);
+          else if (res.result.title === 'Warning') errMsg = 'Enapps rejected this push.';
+        }
+        row.textContent = errMsg ? ('✖ ' + label + ' — ' + errMsg) : ('✓ ' + label + ' — pushed ' + erpPayloadLineCount(res.payload) + ' line(s)');
+        row.style.color = errMsg ? 'var(--warn-text)' : 'var(--success)';
+      }).catch(function(e){
+        row.textContent = '✖ ' + label + ' — request failed: ' + e;
+        row.style.color = 'var(--warn-text)';
+      });
+    });
+  }, Promise.resolve()).then(function(){ refreshSentHistory(); });
 }
 
 function erpPayloadLineCount(payload) {
@@ -2233,8 +2462,9 @@ function erpPayloadLineCount(payload) {
 // with the full raw payload/response tucked underneath. Kept open for a preview (that's the
 // point of it) or an error (needs attention), but collapsed once a real push has succeeded --
 // the raw JSON isn't something to leave sitting on screen once the push has actually landed.
-function erpRenderResult(res, dryRun, projectId) {
-  var resEl = document.getElementById('erpResult');
+function erpRenderResult(res, dryRun, projectId, elId) {
+  var resEl = document.getElementById(elId || 'erpResult');
+  resEl.style.display = 'block';
   var esc = function(s){ return String(s).replace(/</g, '&lt;'); };
   var errMsg = res.error || null;
   if (!errMsg && res.result && typeof res.result === 'object') {

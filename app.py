@@ -42,6 +42,14 @@ FAILURES_DIR = os.environ.get('FAILURES_DIR', '/data/bom_failures')
 os.makedirs(FAILURES_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(LOG_FILE) or '.', exist_ok=True)
 
+# Record of every real (non-dry-run) Push to ERP, whichever of the three buttons it came from
+# (the original bottom panel, or the newer Separate/Combined ones) -- same directory/volume as
+# LOG_FILE, same append-only-JSONL-with-a-lock shape, but its OWN file and OWN lock: log_lock()
+# below is hardcoded to LOG_FILE and not reentrant, so sharing it here would either deadlock or
+# (if reimplemented inline) risk the exact cross-worker corruption its own comment warns about.
+# Cloning the proven pattern for a second, independent file is the safe way to add this.
+ERP_PUSH_LOG_FILE = os.path.join(os.path.dirname(LOG_FILE) or '.', 'erp_push_log.jsonl')
+
 try:
     import fcntl   # POSIX (Railway)
 except ImportError:
@@ -106,6 +114,46 @@ def load_log():
             except ValueError:
                 # One bad line costs one entry, not the whole history.
                 app.logger.warning('skipping corrupt log line %d in %s', lineno, LOG_FILE)
+    return entries
+
+
+@contextlib.contextmanager
+def _erp_push_log_lock():
+    """Same locking recipe as log_lock() above, own file/own lock -- see ERP_PUSH_LOG_FILE's
+    own comment for why this isn't just reusing log_lock()."""
+    with open(ERP_PUSH_LOG_FILE + '.lock', 'a+') as lf:
+        _lock_file(lf, exclusive=True)
+        try:
+            yield
+        finally:
+            _lock_file(lf, exclusive=False)
+
+
+def append_erp_push_log(entry):
+    line = (json.dumps(entry, separators=(',', ':')) + '\n').encode('utf-8')
+    with _erp_push_log_lock():
+        fd = os.open(ERP_PUSH_LOG_FILE, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        try:
+            os.write(fd, line)
+        finally:
+            os.close(fd)
+
+
+def load_erp_push_log():
+    """Read all Push to ERP history entries. A corrupt line is skipped, never fatal -- same
+    reasoning as load_log()'s own."""
+    entries = []
+    if not os.path.exists(ERP_PUSH_LOG_FILE):
+        return entries
+    with open(ERP_PUSH_LOG_FILE, 'r') as f:
+        for lineno, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entries.append(json.loads(line))
+            except ValueError:
+                app.logger.warning('skipping corrupt log line %d in %s', lineno, ERP_PUSH_LOG_FILE)
     return entries
 
 
@@ -579,10 +627,40 @@ def api_erp_push():
                         res['project_url'] = erp_connector.project_web_url(proj['id'], proj.get('name') or project_id)
                 except Exception:
                     pass
+            # One log entry per real push, whichever of the three buttons sent it -- ref names
+            # which picking list ("Second Floor", "Combined", ...) purely for the history display,
+            # never sent to Enapps itself. Logging failure must never mask the push's own result.
+            try:
+                append_erp_push_log({
+                    'ts': datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+                    'user': str(data.get('user', '')).strip()[:80],
+                    'project_id': project_id,
+                    'ref': str(data.get('ref') or 'Combined').strip()[:80],
+                    'line_count': len(lines),
+                    'ok': not rejected,
+                    'error': (result.get('error') if rejected and isinstance(result, dict) else None),
+                })
+            except Exception:
+                app.logger.exception('failed to record ERP push log entry')
         return jsonify(res)
     except Exception as e:
         app.logger.exception('ERP push failed')
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/erp/push_log')
+@login_required
+def api_erp_push_log():
+    """History for the top-of-page "sent to ERP" list -- entries whose project_id contains the
+    given one (case-insensitive), newest first. Matches loosely (substring) since the same
+    project can be pushed under its bare WSO from one place and its full Enapps name from
+    another."""
+    project_id = (request.args.get('project_id') or '').strip().lower()
+    if not project_id:
+        return jsonify({'entries': []})
+    entries = [e for e in load_erp_push_log() if project_id in str(e.get('project_id', '')).lower()]
+    entries.sort(key=lambda e: e.get('ts', ''), reverse=True)
+    return jsonify({'entries': entries[:20]})
 
 
 if __name__ == '__main__':
