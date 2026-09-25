@@ -611,25 +611,28 @@ def api_erp_push():
             return jsonify({'error': "Enter the Project ID first — Enapps' full project name "
                             "(open the project in Enapps and copy its name exactly)."})
         dry_run = bool(data.get('dry_run', True))
-        res = erp_connector.push_pol_import(lines, project_id, dry_run=dry_run)
-        res['skipped'] = skipped
-        # On a genuine live success, look up the project's Enapps web URL so the browser can jump
-        # straight to its Project Order Lines page. Best-effort and silent on failure -- a rejected
-        # push (still a 200 with the rejection sitting inside 'result') never gets a URL, and a
-        # lookup problem here must never mask whether the push itself actually landed.
+        # A REAL push (dry_run False) must be logged whether it succeeds, is rejected, or raises
+        # outright (e.g. an auth failure) -- this is exactly what the "Sent to ERP" history exists
+        # to answer ("did this already go, and what happened"), so a raised exception silently
+        # skipping the log entry (the whole point of this history) would be worse than logging one
+        # more failure. push_pol_import itself is the only thing here that can raise.
+        push_error = None
+        try:
+            res = erp_connector.push_pol_import(lines, project_id, dry_run=dry_run)
+        except Exception as e:
+            res = None
+            push_error = str(e)
+
         if not dry_run:
-            result = res.get('result')
-            rejected = isinstance(result, dict) and (result.get('error') or result.get('title') == 'Warning')
-            if not rejected:
-                try:
-                    proj = erp_connector.find_ea_project_by_wso(project_id)
-                    if proj and proj.get('id'):
-                        res['project_url'] = erp_connector.project_web_url(proj['id'], proj.get('name') or project_id)
-                except Exception:
-                    pass
-            # One log entry per real push, whichever of the three buttons sent it -- ref names
-            # which picking list ("Second Floor", "Combined", ...) purely for the history display,
-            # never sent to Enapps itself. Logging failure must never mask the push's own result.
+            result = (res or {}).get('result') if res else None
+            rejected = bool(push_error) or (isinstance(result, dict) and (result.get('error') or result.get('title') == 'Warning'))
+            log_err = push_error
+            if not log_err and rejected and isinstance(result, dict):
+                # Same shape erpRenderResult already normalizes client-side (res.result.error is
+                # usually {message: ...}, not a plain string) -- match it here so the history
+                # shows real text instead of "[object Object]".
+                err_val = result.get('error')
+                log_err = (err_val.get('message') if isinstance(err_val, dict) else err_val) or 'Enapps rejected this push.'
             try:
                 append_erp_push_log({
                     'ts': datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
@@ -638,10 +641,26 @@ def api_erp_push():
                     'ref': str(data.get('ref') or 'Combined').strip()[:80],
                     'line_count': len(lines),
                     'ok': not rejected,
-                    'error': (result.get('error') if rejected and isinstance(result, dict) else None),
+                    'error': log_err,
                 })
             except Exception:
                 app.logger.exception('failed to record ERP push log entry')
+
+        if push_error is not None:
+            raise RuntimeError(push_error)
+
+        res['skipped'] = skipped
+        # On a genuine live success, look up the project's Enapps web URL so the browser can jump
+        # straight to its Project Order Lines page. Best-effort and silent on failure -- a rejected
+        # push (still a 200 with the rejection sitting inside 'result') never gets a URL, and a
+        # lookup problem here must never mask whether the push itself actually landed.
+        if not dry_run and not rejected:
+            try:
+                proj = erp_connector.find_ea_project_by_wso(project_id)
+                if proj and proj.get('id'):
+                    res['project_url'] = erp_connector.project_web_url(proj['id'], proj.get('name') or project_id)
+            except Exception:
+                pass
         return jsonify(res)
     except Exception as e:
         app.logger.exception('ERP push failed')
