@@ -100,6 +100,42 @@ def _token():
         return tok
 
 
+def custom_view(table_name):
+    """GET /api/v1/custom_view?table_name=<view> — a read-only Postgres view connected to the API
+    user (Enapps admin: Settings > Users > Postgres views). Used here only to resolve a WSO to its
+    ea_project's full name — see find_ea_project_by_wso."""
+    return _send("/api/v1/custom_view", "GET", token=_token(), params={"table_name": table_name})
+
+
+def fetch_ea_projects():
+    """[{id, name}, ...] for every ea_project record — there's no REST endpoint for ea_project at
+    all (every /api/v1/project* guess 404s on this instance), so this rides the same connected
+    Postgres view Hub already reads for the same purpose. `name` is the project's full name (e.g.
+    "WSO086524 Gross Springs 15913") — there's no dedicated WSO field, so callers match it by
+    substring (see find_ea_project_by_wso)."""
+    view = os.environ.get("ENAPPS_PRODUCT_COST_VIEW", "readonly_view_tompostgres")
+    res = custom_view(view)
+    if res.get("errors"):
+        raise RuntimeError("Enapps custom_view '%s' returned errors: %s" % (view, res["errors"]))
+    rows = res.get("results")
+    if not isinstance(rows, list):
+        raise RuntimeError("Unexpected custom_view response shape: %r" % (res,))
+    return [{"id": r.get("code"), "name": r.get("description")} for r in rows if r.get("row_type") == "ea_project"]
+
+
+def find_ea_project_by_wso(wso):
+    """The ea_project whose name contains this WSO reference (e.g. "WSO086616" inside
+    "WSO086616 Parsons Wells 80518"), or None. First match wins — WSO references are unique in
+    practice."""
+    wso = str(wso or "").strip().lower()
+    if not wso:
+        return None
+    for p in fetch_ea_projects():
+        if wso in str(p.get("name") or "").lower():
+            return p
+    return None
+
+
 def build_pol_payload(lines, project_id, chain_id=None, template_id=None):
     """Assemble the do_import (amend) body from picking-list lines
     ([{product_id, description, sale_price, qty}, ...]). Pure builder (no network)."""

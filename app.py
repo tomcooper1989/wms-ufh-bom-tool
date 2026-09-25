@@ -504,6 +504,21 @@ def _handle_pdf_request(endpoint):
 # the user typed directly, on every push -- see erp_connector.py's module docstring).
 # ---------------------------------------------------------------
 
+@app.route('/api/erp/project_by_wso')
+@login_required
+def api_erp_project_by_wso():
+    """WSO -> Enapps' own full ea_project name (Postgres-view text search), so the Push-to-ERP
+    field can find that name instead of it being copy-pasted out of Enapps by hand."""
+    wso = request.args.get('wso', '')
+    if not erp_connector.is_configured():
+        return jsonify({'configured': False, 'name': None})
+    try:
+        proj = erp_connector.find_ea_project_by_wso(wso)
+        return jsonify({'configured': True, 'name': (proj or {}).get('name')})
+    except Exception as e:
+        return jsonify({'configured': True, 'name': None, 'error': str(e)})
+
+
 @app.route('/api/erp/push', methods=['POST'])
 @login_required
 def api_erp_push():

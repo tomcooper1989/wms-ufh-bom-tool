@@ -331,9 +331,12 @@ table.bom tr:hover td { background: var(--bg); }
       </div>
     </div>
     <div style="margin-bottom:1rem;">
-      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Project ID (WSO or full project name)</label>
-      <input id="erpProjectId" type="text" placeholder="e.g. WSO086524 Gross Springs 15913" style="width:100%;max-width:420px;padding:8px 10px;border:1px solid var(--border-strong);border-radius:var(--radius);font-size:13px;background:var(--surface);color:var(--text);">
-      <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Enapps' own full project name, not just the bare WSO &#8212; open the project in Enapps and copy its name exactly.</div>
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">WSO number</label>
+      <div style="display:flex;gap:8px;max-width:420px;">
+        <input id="erpProjectId" type="text" placeholder="e.g. WSO086524" onblur="erpLookupProject()" style="flex:1;padding:8px 10px;border:1px solid var(--border-strong);border-radius:var(--radius);font-size:13px;background:var(--surface);color:var(--text);">
+        <button class="btn-excel" type="button" onclick="erpLookupProject()" style="padding:8px 14px;font-size:12px;white-space:nowrap;">Find on Enapps</button>
+      </div>
+      <div id="erpProjectIdHint" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Enter the WSO &#8212; it's looked up on Enapps and resolved to its own full project name automatically.</div>
     </div>
     <div style="margin-bottom:1rem;">
       <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Which picking list(s) do you want to push?</label>
@@ -826,6 +829,8 @@ function clearAll() {
   document.getElementById('combinedBody').innerHTML = '';
   document.getElementById('erpWrap').style.display = 'none';
   document.getElementById('erpProjectId').value = '';
+  document.getElementById('erpProjectIdHint').textContent = "Enter the WSO — it's looked up on Enapps and resolved to its own full project name automatically.";
+  document.getElementById('erpProjectIdHint').style.color = 'var(--text-muted)';
   document.getElementById('erpResult').style.display = 'none';
   ERP_ENTERED = {};
   document.getElementById('btnClearAll').style.display = 'none';
@@ -2097,6 +2102,29 @@ function erpUpdateProducts() {
       '<td><input class="erp-price" type="number" step="0.01" value="' + price + '" style="width:90px;font-size:12px;padding:4px 6px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text);"></td>' +
       '<td>' + p.qty + '</td></tr>';
   }).join('');
+}
+
+function erpLookupProject() {
+  var input = document.getElementById('erpProjectId');
+  var hint = document.getElementById('erpProjectIdHint');
+  var wso = input.value.trim();
+  if (!wso) return;
+  hint.textContent = 'Looking up on Enapps…'; hint.style.color = 'var(--text-muted)';
+  fetch('/api/erp/project_by_wso?wso=' + encodeURIComponent(wso)).then(function(r){ return r.json(); }).then(function(res){
+    if (!res.configured) {
+      hint.textContent = 'Enapps not connected — enter the project name manually.'; hint.style.color = 'var(--warn-text)';
+      return;
+    }
+    if (res.name) {
+      input.value = res.name;
+      hint.textContent = '✓ Auto-found from Enapps — check it’s right before pushing.'; hint.style.color = 'var(--success)';
+    } else {
+      hint.textContent = 'No matching project found in Enapps for "' + wso + '" — check the WSO, or enter the full project name manually.';
+      hint.style.color = 'var(--warn-text)';
+    }
+  }).catch(function(){
+    hint.textContent = 'Lookup failed — enter the project name manually.'; hint.style.color = 'var(--warn-text)';
+  });
 }
 
 function erpSend(dryRun) {
