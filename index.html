@@ -2139,6 +2139,12 @@ function erpLookupProject() {
     if (res.name) {
       input.value = res.name;
       hint.textContent = '✓ Auto-found from Enapps — check it’s right before pushing.'; hint.style.color = 'var(--success)';
+    } else if (res.error) {
+      // A real backend failure (view error, auth, timeout...) previously came back here exactly the
+      // same as a genuine "not found" -- this code only ever checked res.name, never res.error -- so
+      // an actual problem always looked identical to a WSO that simply isn't in Enapps, with no way
+      // to tell the two apart from this screen.
+      hint.textContent = 'Lookup failed: ' + res.error; hint.style.color = 'var(--warn-text)';
     } else {
       hint.textContent = 'No matching project found in Enapps for "' + wso + '" — check the WSO, or enter the full project name manually.';
       hint.style.color = 'var(--warn-text)';
