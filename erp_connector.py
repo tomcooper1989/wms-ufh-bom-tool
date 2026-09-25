@@ -155,6 +155,22 @@ def build_pol_payload(lines, project_id, chain_id=None, template_id=None):
     return {"import_data": {chain_id: entries}}
 
 
+def project_web_url(project_id, name=""):
+    """Web URL that opens an ea_project's form in the Enapps UI (its own Project Order Lines page),
+    so a successful push can jump straight to it. Confirmed live 2026-09-25 (Tom, project "WSO086716
+    Margaret Wells 54953", ea_project id 17401): model=ea_project, action_menu_id=541 (same nav
+    context order_web_url's sale.order link uses), action_id=727. Configurable via
+    ENAPPS_PROJECT_URL_TEMPLATE (placeholders {id} and {name}); defaults to the confirmed pattern on
+    the ENAPPS host. Returns '' when the id is missing."""
+    if not project_id:
+        return ""
+    tmpl = os.environ.get("ENAPPS_PROJECT_URL_TEMPLATE")
+    if not tmpl:
+        base = (os.environ.get("ENAPPS_URL") or "").rstrip("/")
+        tmpl = base + "/web/webclient/home#model=ea_project&title=Projects%2B-%2B{name}&view_type=form&action_menu_id=541&id={id}&action_id=727"
+    return tmpl.replace("{id}", str(project_id)).replace("{name}", urllib.parse.quote(str(name or ""), safe=""))
+
+
 def push_pol_import(lines, project_id, dry_run=True):
     """Build and (unless dry_run) POST the Project Order Lines import. Returns the assembled
     payload either way; on a live push also returns the raw API response, so a failure can be

@@ -120,6 +120,7 @@ table.bom tr:hover td { background: var(--bg); }
 .combined-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem; }
 .combined-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
 .combined-sub { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+#erpResult summary::-webkit-details-marker { display: none; }
 
 /* Dashboard modal */
 .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 100; align-items: center; justify-content: center; }
@@ -2160,13 +2161,20 @@ function erpSend(dryRun) {
   var project_id = document.getElementById('erpProjectId').value.trim();
   resEl.style.display = 'block';
   resEl.innerHTML = dryRun ? 'Building preview…' : 'Pushing to Enapps…';
+  // Open the tab now, synchronously inside this click handler, and point it at the project's
+  // Enapps page once the push comes back -- opening it only after the (async) response arrives
+  // is exactly what browsers treat as an unrequested popup and silently block.
+  var pendingWin = dryRun ? null : window.open('', '_blank');
   fetch('/api/erp/push', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({project_id: project_id, items: items, erp_products: erp_products, dry_run: dryRun})
   }).then(function(r){ return r.json(); }).then(function(res){
     erpRenderResult(res, dryRun, project_id);
+    if (res.project_url && pendingWin) pendingWin.location = res.project_url;
+    else if (pendingWin) pendingWin.close();
   }).catch(function(e){
     resEl.textContent = 'Request failed: ' + e;
+    if (pendingWin) pendingWin.close();
   });
 }
 
@@ -2203,9 +2211,15 @@ function erpRenderResult(res, dryRun, projectId) {
       (skipped.length ? (' — ' + skipped.length + ' skipped (no product ref set)') : '');
     open = false;
   }
-  resEl.innerHTML = '<details' + (open ? ' open' : '') + '><summary style="cursor:pointer;font-family:inherit;font-weight:600;">' +
-    esc(summary) + '</summary><pre style="margin:8px 0 0;white-space:pre-wrap;font-family:monospace;">' +
+  // An explicit arrow that flips on toggle, rather than relying on the browser's own (easy-to-miss,
+  // inconsistently styled) disclosure marker -- collapsing this must never look like a dead end.
+  resEl.innerHTML = '<details' + (open ? ' open' : '') + ' style="cursor:default;"><summary style="cursor:pointer;font-family:inherit;font-weight:600;list-style:none;">' +
+    '<span class="erp-result-arrow">' + (open ? '▾' : '▸') + '</span> ' + esc(summary) +
+    '</summary><pre style="margin:8px 0 0;white-space:pre-wrap;font-family:monospace;">' +
     esc(JSON.stringify(res, null, 2)) + '</pre></details>';
+  var det = resEl.querySelector('details');
+  var arrow = resEl.querySelector('.erp-result-arrow');
+  det.addEventListener('toggle', function(){ arrow.textContent = det.open ? '▾' : '▸'; });
 }
 
 // Tells "still the same server process" from "a new one has taken over" (a deploy) so a

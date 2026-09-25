@@ -554,6 +554,20 @@ def api_erp_push():
         dry_run = bool(data.get('dry_run', True))
         res = erp_connector.push_pol_import(lines, project_id, dry_run=dry_run)
         res['skipped'] = skipped
+        # On a genuine live success, look up the project's Enapps web URL so the browser can jump
+        # straight to its Project Order Lines page. Best-effort and silent on failure -- a rejected
+        # push (still a 200 with the rejection sitting inside 'result') never gets a URL, and a
+        # lookup problem here must never mask whether the push itself actually landed.
+        if not dry_run:
+            result = res.get('result')
+            rejected = isinstance(result, dict) and (result.get('error') or result.get('title') == 'Warning')
+            if not rejected:
+                try:
+                    proj = erp_connector.find_ea_project_by_wso(project_id)
+                    if proj and proj.get('id'):
+                        res['project_url'] = erp_connector.project_web_url(proj['id'], proj.get('name') or project_id)
+                except Exception:
+                    pass
         return jsonify(res)
     except Exception as e:
         app.logger.exception('ERP push failed')
