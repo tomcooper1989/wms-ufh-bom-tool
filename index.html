@@ -850,6 +850,7 @@ function clearAll() {
   document.getElementById('erpProjectIdHint').style.color = 'var(--text-muted)';
   document.getElementById('erpResult').style.display = 'none';
   ERP_ENTERED = {};
+  ERP_WSO_AUTOFILLED = false;
   document.getElementById('btnClearAll').style.display = 'none';
   bulkAnswers = {};
   document.getElementById('bulkBar').style.display = 'none';
@@ -2047,16 +2048,22 @@ function exportCombined() {
 // later push at the wrong Enapps product.
 var ERP_ENTERED = {};   // code -> {product_id, sale_price} the user has typed this session, kept
                         // across re-renders (ticking/unticking lists) so nothing already typed is lost.
+var ERP_WSO_AUTOFILLED = false;   // only auto-fill the WSO field once per session -- see erpRenderListPicker.
+
+function erpExtractWsoFromFilename(name) {
+  var m = /WSO\d+(?:-[A-Za-z0-9]+)?/i.exec(name || '');
+  return m ? m[0].toUpperCase() : '';
+}
 
 function erpListEntries() {
-  // {key, label, items}[] for every pushable list currently available: one per generated panel,
-  // plus 'combined' if the combined list has been built.
+  // {key, label, items, filename}[] for every pushable list currently available: one per
+  // generated panel, plus 'combined' if the combined list has been built.
   var out = [];
   Object.keys(panels).forEach(function(k){
     var p = panels[k];
     if (!p.bom || !p.bom.length) return;
     var label = (p.ref || p.floor_name || ('Design ' + k));
-    out.push({key: 'panel-' + k, label: label, items: p.bom});
+    out.push({key: 'panel-' + k, label: label, items: p.bom, filename: p.filename});
   });
   if (window._combinedBom && document.getElementById('combinedWrap').style.display !== 'none') {
     out.push({key: 'combined', label: 'Combined Picking List', items: window._combinedBom});
@@ -2069,6 +2076,20 @@ function erpRenderListPicker() {
   var entries = erpListEntries();
   if (!entries.length) { wrap.style.display = 'none'; return; }
   wrap.style.display = 'block';
+  // The moment the first picking list of the session exists, pull the WSO straight off its
+  // drawing's own filename and kick off the same Enapps lookup "Find on Enapps" does -- one-shot
+  // (a later panel completing must never overwrite a WSO the user's already looked up or edited),
+  // and only into an empty field, so anything already typed there is never clobbered.
+  if (!ERP_WSO_AUTOFILLED) {
+    ERP_WSO_AUTOFILLED = true;
+    var firstPanel = entries.filter(function(e){ return e.key !== 'combined'; })[0];
+    var wso = firstPanel ? erpExtractWsoFromFilename(firstPanel.filename) : '';
+    var pidInput = document.getElementById('erpProjectId');
+    if (wso && !pidInput.value.trim()) {
+      pidInput.value = wso;
+      erpLookupProject();
+    }
+  }
   var picker = document.getElementById('erpListPicker');
   var prevChecked = {};
   picker.querySelectorAll('.erp-list-sel').forEach(function(cb){ prevChecked[cb.value] = cb.checked; });
