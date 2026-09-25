@@ -113,7 +113,7 @@ table.bom tr:hover td { background: var(--bg); }
 .combined-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem; }
 .combined-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
 .combined-sub { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
-#erpResult summary::-webkit-details-marker { display: none; }
+#erpResult summary::-webkit-details-marker, #combinedPushResult summary::-webkit-details-marker { display: none; }
 
 /* Dashboard modal */
 .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 100; align-items: center; justify-content: center; }
@@ -283,6 +283,36 @@ table.bom tr:hover td { background: var(--bg); }
   <div class="drawings-grid" id="drawingsGrid"></div>
 </div>
 
+<!-- Project reference for BOTH Push buttons below (Separate/Combined) -- placed ahead of both so
+     it's resolved before either can be clicked, not something to scroll past first. It used to
+     also be its own third, independent push workflow (tick which picking lists, get one more
+     merged/summed set of lines, its own Push/Preview buttons, sitting BELOW these two) -- removed:
+     it duplicated Push Combined to ERP exactly, and its own separate WSO/Postgres-view lookup was
+     the actual source of the 401s chased through this whole session. Both buttons below read this
+     panel's resolved value via document.getElementById('erpProjectId').value. -->
+<div class="combined-wrap" id="erpWrap">
+  <div class="combined-inner">
+    <div class="combined-header">
+      <div>
+        <div class="combined-title">Project Reference</div>
+        <div class="combined-sub">Used by both Push buttons below &#8212; resolved to Enapps' own full project name so a push always lands on the right project</div>
+      </div>
+      <div style="text-align:right;">
+        <button type="button" onclick="erpCheckStatus()" style="background:none;border:none;color:var(--text-muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:0;">Check Enapps connection (REST)</button>
+        <div id="erpStatusResult" style="font-size:11px;margin-top:3px;"></div>
+      </div>
+    </div>
+    <div id="erpWsoInputBlock">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">WSO number</label>
+      <div style="display:flex;gap:8px;max-width:420px;">
+        <input id="erpProjectId" type="text" placeholder="e.g. WSO086524" onblur="erpLookupProject()" style="flex:1;padding:8px 10px;border:1px solid var(--border-strong);border-radius:var(--radius);font-size:13px;background:var(--surface);color:var(--text);">
+        <button class="btn-excel" type="button" onclick="erpLookupProject()" style="padding:8px 14px;font-size:12px;white-space:nowrap;">Find on Enapps</button>
+      </div>
+    </div>
+    <div id="erpProjectIdHint" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Enter the WSO &#8212; it's looked up on Enapps and resolved to its own full project name automatically.</div>
+  </div>
+</div>
+
 <div class="combined-wrap" id="pushSeparateWrap" style="display:none;">
   <div class="combined-inner">
     <div class="combined-header">
@@ -327,46 +357,6 @@ table.bom tr:hover td { background: var(--bg); }
       <button class="btn-excel" onclick="pushCombinedToErp()" style="background:var(--success);border-color:var(--success);color:#fff;">&#128640; Push Combined to ERP</button>
     </div>
     <div id="combinedPushResult" style="display:none;font-size:12px;margin-top:8px;"></div>
-  </div>
-</div>
-
-<div class="combined-wrap" id="erpWrap">
-  <div class="combined-inner">
-    <div class="combined-header">
-      <div>
-        <div class="combined-title">Push to ERP</div>
-        <div class="combined-sub">Send a picking list's items into Enapps as Project Order Lines &#8212; same import Hub's own Push-to-ERP uses</div>
-      </div>
-      <div style="text-align:right;">
-        <button type="button" onclick="erpCheckStatus()" style="background:none;border:none;color:var(--text-muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:0;">Check Enapps connection (REST)</button>
-        <div id="erpStatusResult" style="font-size:11px;margin-top:3px;"></div>
-      </div>
-    </div>
-    <div style="margin-bottom:1rem;">
-      <div id="erpWsoInputBlock">
-        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">WSO number</label>
-        <div style="display:flex;gap:8px;max-width:420px;">
-          <input id="erpProjectId" type="text" placeholder="e.g. WSO086524" onblur="erpLookupProject()" style="flex:1;padding:8px 10px;border:1px solid var(--border-strong);border-radius:var(--radius);font-size:13px;background:var(--surface);color:var(--text);">
-          <button class="btn-excel" type="button" onclick="erpLookupProject()" style="padding:8px 14px;font-size:12px;white-space:nowrap;">Find on Enapps</button>
-        </div>
-      </div>
-      <div id="erpProjectIdHint" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Enter the WSO &#8212; it's looked up on Enapps and resolved to its own full project name automatically.</div>
-      <button onclick="erpSend(false)" style="margin-top:12px;width:100%;max-width:420px;padding:14px 20px;font-size:15px;font-weight:700;background:var(--success);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;box-shadow:0 3px 10px rgba(22,163,74,0.35);">&#128640; Push to Enapps</button>
-    </div>
-    <div style="margin-bottom:1rem;">
-      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Which picking list(s) do you want to push?</label>
-      <div id="erpListPicker" style="display:flex;flex-direction:column;gap:4px;font-size:13px;"></div>
-    </div>
-    <div style="overflow-x:auto;">
-      <table class="bom">
-        <thead><tr><th>Product</th><th>Code</th><th>Specification</th><th>Qty</th><th></th></tr></thead>
-        <tbody id="erpProductsBody"><tr><td colspan="5" style="color:var(--text-muted);padding:8px;">Tick a picking list above.</td></tr></tbody>
-      </table>
-    </div>
-    <div class="actions-row" style="margin-top:1rem;">
-      <button class="btn-excel" onclick="erpSend(true)">&#128065; Preview payload</button>
-    </div>
-    <div id="erpResult" style="display:none;font-size:12px;font-family:monospace;white-space:pre-wrap;background:var(--bg);border:1px solid var(--border-strong);border-radius:var(--radius);padding:8px 10px;margin-top:0.75rem;max-height:260px;overflow:auto;"></div>
   </div>
 </div>
 
@@ -619,7 +609,7 @@ var HUB_WSO = (function(){
 // Set when the Hub already has this project's full Enapps name resolved (Project record's own
 // erp.project_name) -- lets Push to ERP skip its own WSO/Postgres-view lookup entirely rather than
 // repeat one the Hub's already done, since that lookup is exactly what's been failing separately
-// (see erpRenderListPicker's own comment).
+// (see erpResolveProjectRef's own comment).
 var HUB_PROJECT_NAME = (function(){
   try { return new URLSearchParams(location.search).get('projectName') || ''; } catch(e) { return ''; }
 })();
@@ -848,7 +838,6 @@ function removePanel(id) {
   var el = document.getElementById('panel-' + id);
   if (el) el.remove();
   updateGrid();
-  erpRenderListPicker();
 }
 
 function clearAll() {
@@ -870,8 +859,7 @@ function clearAll() {
   document.getElementById('erpProjectId').value = '';
   document.getElementById('erpProjectIdHint').textContent = "Enter the WSO — it's looked up on Enapps and resolved to its own full project name automatically.";
   document.getElementById('erpProjectIdHint').style.color = 'var(--text-muted)';
-  document.getElementById('erpResult').style.display = 'none';
-  ERP_EXCLUDED_CODES = new Set();
+  document.getElementById('sentHistoryBar').style.display = 'none';
   ERP_WSO_AUTOFILLED = false;
   document.getElementById('btnClearAll').style.display = 'none';
   bulkAnswers = {};
@@ -1841,8 +1829,10 @@ function generateBOM(id) {
   // The combined list builds itself the moment any BOM exists -- no "combine all?" prompt to
   // click through first.
   if(Object.values(panels).some(function(x){return x.bom&&x.bom.length>0;})){
+    document.getElementById('erpWrap').style.display='block';
     document.getElementById('combinedWrap').style.display='block';
     document.getElementById('pushSeparateWrap').style.display='block';
+    erpResolveProjectRef();
     renderCombined();
   }
 }
@@ -2114,7 +2104,6 @@ function renderCombined() {
   document.getElementById('combinedBody').innerHTML=
     editableBomRowsHtml(rows, 'combined', 'combinedOmitLine', 'combinedAddLine');
   window._combinedBom=rows;
-  erpRenderListPicker();
 }
 
 function calcCoils16(tm, supplier){
@@ -2171,21 +2160,13 @@ function exportCombined() {
 }
 
 // ── Push to ERP (Enapps Project Order Lines) ──────────────────────────────
-// Standalone equivalent of The Hub's own picking-list Push-to-ERP modal. Hub already knows
-// which project it's open on and keeps a running per-WSO store of every generated list; this
-// tool has neither, so the user enters the project explicitly and everything pushed comes only
-// from what's live in this browser session right now. The product list is exactly the Combined
-// Picking List (same computeCombinedBom(), same pipe-method/exclude-500 state) run over whichever
-// panels are ticked below -- it only differs from the visible combined list when a WSO is
-// unticked, or a line's been removed with its own x. No Enapps product ref / sale price to fill
-// in: every line's own WMS code IS the Enapps product reference, sent with sale_cost/sale_price
-// both 0 (this is a stock picking list, not a priced sale).
-var ERP_EXCLUDED_CODES = new Set();   // codes the user has explicitly x'd off this push.
-var ERP_WSO_AUTOFILLED = false;       // only auto-fill the WSO field once per session.
+// Two real ways to push (Separate/Combined, see their own buttons/functions below) sharing ONE
+// resolved project reference (the "Project Reference" panel, #erpWrap). No Enapps product ref /
+// sale price to fill in either way: every line's own WMS code IS the Enapps product reference,
+// sent with sale_cost/sale_price both 0 (this is a stock picking list, not a priced sale).
+var ERP_WSO_AUTOFILLED = false;       // only auto-fill the ref field once per session.
 // Combined Picking List's own edits -- layered on top of computeCombinedBom()'s (already
-// per-panel-corrected, since it reads each panel's own edited p.bom) output. Separate from
-// ERP_EXCLUDED_CODES above, which is the bottom "Push to ERP" panel's own, older, independent
-// tick-list-driven workflow -- left exactly as it was.
+// per-panel-corrected, since it reads each panel's own edited p.bom) output.
 var COMBINED_OMIT = new Set();
 var COMBINED_EXTRA = [];
 
@@ -2194,102 +2175,44 @@ function erpExtractWsoFromFilename(name) {
   return m ? m[0].toUpperCase() : '';
 }
 
-function erpListEntries() {
-  // {key, label, panel, filename}[] -- one per generated panel (a WSO's own picking list).
-  var out = [];
-  Object.keys(panels).forEach(function(k){
-    var p = panels[k];
-    if (!p.bom || !p.bom.length) return;
-    var label = (p.ref || p.floor_name || ('Design ' + k));
-    out.push({key: 'panel-' + k, label: label, panel: p, filename: p.filename});
-  });
-  return out;
-}
-
-function erpRenderListPicker() {
-  var wrap = document.getElementById('erpWrap');
-  var entries = erpListEntries();
-  if (!entries.length) { wrap.style.display = 'none'; return; }
-  wrap.style.display = 'block';
-  // The moment the first picking list of the session exists, resolve the project, one-shot (a
-  // later panel completing must never overwrite a WSO/name the user's already looked up or edited).
-  if (!ERP_WSO_AUTOFILLED) {
-    ERP_WSO_AUTOFILLED = true;
-    // Opened from inside The Hub's own Project tab (?wso=...): that project is ALREADY known, so
-    // asking the user to type or "Find on Enapps" a WSO they've already navigated into is pure
-    // friction -- hide just the WSO input box and resolve it straight away instead. This panel's
-    // own product list + per-line remove + Push button stay fully visible and usable either way --
-    // an earlier pass here hid the WHOLE panel on the theory that the Hub's own separate "Push
-    // ticked to ERP" (on the created-list card) already covers this, but that one only ticks/
-    // unticks whole picking lists, it has no per-line remove -- so hiding this panel silently took
-    // away the only place line-level removal existed. Standalone (no HUB_WSO) keeps the field-and-
-    // filename-guess flow exactly as it was; this never touches that path.
-    var wsoBlock = document.getElementById('erpWsoInputBlock');
-    var pidInput = document.getElementById('erpProjectId');
-    if (typeof HUB_WSO !== 'undefined' && HUB_WSO) {
-      if (wsoBlock) wsoBlock.style.display = 'none';
-      if (!pidInput.value.trim()) {
-        // Prefer a name the Hub's already resolved (its Project record's own erp.project_name) --
-        // skips this tool's own WSO/Postgres-view lookup entirely, which is the thing that's been
-        // 401ing separately (see erpLookupProject's own error-surfacing). Only falls back to that
-        // lookup when the Hub hasn't resolved a name yet (e.g. never pulled from ERP on that record).
-        if (typeof HUB_PROJECT_NAME !== 'undefined' && HUB_PROJECT_NAME) {
-          pidInput.value = HUB_PROJECT_NAME;
-          refreshSentHistory();
-        } else {
-          pidInput.value = HUB_WSO;
-          erpLookupProject();
-        }
-      }
-    } else {
-      var wso = erpExtractWsoFromFilename(entries[0].filename);
-      if (wso && !pidInput.value.trim()) {
-        pidInput.value = wso;
-        erpLookupProject();
-      }
-    }
-  }
-  var picker = document.getElementById('erpListPicker');
-  var prevChecked = {};
-  picker.querySelectorAll('.erp-list-sel').forEach(function(cb){ prevChecked[cb.value] = cb.checked; });
-  picker.innerHTML = entries.map(function(e){
-    var checked = (e.key in prevChecked) ? prevChecked[e.key] : true;
-    return '<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" class="erp-list-sel" value="' + e.key + '" onchange="erpUpdateProducts()"' + (checked?' checked':'') + '> ' + e.label + '</label>';
-  }).join('');
-  erpUpdateProducts();
-}
-
 function erpEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 function erpAttrEsc(s){ return erpEsc(s).replace(/"/g,'&quot;'); }
 
-// Recomputes the push list from scratch: same computeCombinedBom() the Combined Picking List
-// uses (so the current pipe method / exclude-500 state is always respected), run over only the
-// ticked panels, minus anything the user's individually removed with its row's x.
-function erpUpdateProducts() {
-  var selectedKeys = Array.from(document.querySelectorAll('.erp-list-sel:checked')).map(function(cb){ return cb.value; });
-  var byKey = {}; erpListEntries().forEach(function(e){ byKey[e.key] = e.panel; });
-  var selectedPanels = selectedKeys.map(function(k){ return byKey[k]; }).filter(Boolean);
-  var rows = computeCombinedBom(selectedPanels).filter(function(r){ return !ERP_EXCLUDED_CODES.has(r.c || r.pr); });
-  window._erpPushRows = rows;
-  var body = document.getElementById('erpProductsBody');
-  if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);padding:8px;">Tick a picking list above.</td></tr>';
-    return;
+// Resolves the shared project reference field, once per session, the moment the first picking
+// list exists -- never overwrites a WSO/name the user's already looked up or edited by hand.
+// Opened from inside The Hub's own Project tab (?wso=...): that project is ALREADY known, so
+// asking the user to type or "Find on Enapps" a WSO they've already navigated into is pure
+// friction -- hide the WSO input box and resolve it straight away instead. Standalone (no
+// HUB_WSO) keeps the field-and-filename-guess flow it always had.
+function erpResolveProjectRef() {
+  if (ERP_WSO_AUTOFILLED) return;
+  var firstPanel = Object.values(panels).filter(function(p){ return p.bom && p.bom.length; })[0];
+  if (!firstPanel) return;
+  ERP_WSO_AUTOFILLED = true;
+  var wsoBlock = document.getElementById('erpWsoInputBlock');
+  var pidInput = document.getElementById('erpProjectId');
+  if (typeof HUB_WSO !== 'undefined' && HUB_WSO) {
+    if (wsoBlock) wsoBlock.style.display = 'none';
+    if (!pidInput.value.trim()) {
+      // Prefer a name the Hub's already resolved (its Project record's own erp.project_name) --
+      // skips this tool's own WSO/Postgres-view lookup entirely, which is the thing that's been
+      // 401ing separately (see erpLookupProject's own error-surfacing). Only falls back to that
+      // lookup when the Hub hasn't resolved a name yet (e.g. never pulled from ERP on that record).
+      if (typeof HUB_PROJECT_NAME !== 'undefined' && HUB_PROJECT_NAME) {
+        pidInput.value = HUB_PROJECT_NAME;
+        refreshSentHistory();
+      } else {
+        pidInput.value = HUB_WSO;
+        erpLookupProject();
+      }
+    }
+  } else {
+    var wso = erpExtractWsoFromFilename(firstPanel.filename);
+    if (wso && !pidInput.value.trim()) {
+      pidInput.value = wso;
+      erpLookupProject();
+    }
   }
-  body.innerHTML = rows.map(function(r){
-    var code = r.c || r.pr;
-    return '<tr><td>' + erpEsc(r.pr) + '</td><td>' + erpEsc(r.c) + '</td><td>' + erpEsc(r.s) + '</td><td>' + r.q + '</td>' +
-      '<td style="text-align:center;"><button type="button" class="erp-remove-btn" data-code="' + erpAttrEsc(code) +
-      '" title="Remove this line from the push" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;">&times;</button></td></tr>';
-  }).join('');
-  body.querySelectorAll('.erp-remove-btn').forEach(function(btn){
-    btn.onclick = function(){ erpRemoveLine(btn.getAttribute('data-code')); };
-  });
-}
-
-function erpRemoveLine(code) {
-  ERP_EXCLUDED_CODES.add(code);
-  erpUpdateProducts();
 }
 
 // Deliberately REST-only (see erp_connector.status()'s own docstring) -- distinguishes "the token
@@ -2376,28 +2299,6 @@ function postErpPush(rows, project_id, dry_run, ref) {
     body: JSON.stringify({project_id: project_id, items: built.items, erp_products: built.erp_products,
       dry_run: dry_run, user: getCurrentUser(), ref: ref})
   }).then(function(r){ return r.json(); });
-}
-
-function erpSend(dryRun) {
-  var rows = window._erpPushRows || [];
-  var resEl = document.getElementById('erpResult');
-  if (!rows.length) { resEl.style.display = 'block'; resEl.textContent = 'Tick at least one picking list first.'; return; }
-  var project_id = document.getElementById('erpProjectId').value.trim();
-  resEl.style.display = 'block';
-  resEl.innerHTML = dryRun ? 'Building preview…' : 'Pushing to Enapps…';
-  // Open the tab now, synchronously inside this click handler, and point it at the project's
-  // Enapps page once the push comes back -- opening it only after the (async) response arrives
-  // is exactly what browsers treat as an unrequested popup and silently block.
-  var pendingWin = dryRun ? null : window.open('', '_blank');
-  postErpPush(rows, project_id, dryRun, 'Combined (ticked lists)').then(function(res){
-    erpRenderResult(res, dryRun, project_id);
-    if (res.project_url && pendingWin) pendingWin.location = res.project_url;
-    else if (pendingWin) pendingWin.close();
-    if (!dryRun) refreshSentHistory();
-  }).catch(function(e){
-    resEl.textContent = 'Request failed: ' + e;
-    if (pendingWin) pendingWin.close();
-  });
 }
 
 // "Push Combined to ERP" -- one push, the Combined Picking List's own current (edited) rows.
