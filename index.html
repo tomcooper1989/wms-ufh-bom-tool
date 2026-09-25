@@ -322,6 +322,37 @@ table.bom tr:hover td { background: var(--bg); }
   </div>
 </div>
 
+<div class="combined-wrap" id="erpWrap">
+  <div class="combined-inner">
+    <div class="combined-header">
+      <div>
+        <div class="combined-title">Push to ERP</div>
+        <div class="combined-sub">Send a picking list's items into Enapps as Project Order Lines &#8212; same import Hub's own Push-to-ERP uses</div>
+      </div>
+    </div>
+    <div style="margin-bottom:1rem;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Project ID (WSO or full project name)</label>
+      <input id="erpProjectId" type="text" placeholder="e.g. WSO086524 Gross Springs 15913" style="width:100%;max-width:420px;padding:8px 10px;border:1px solid var(--border-strong);border-radius:var(--radius);font-size:13px;background:var(--surface);color:var(--text);">
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Enapps' own full project name, not just the bare WSO &#8212; open the project in Enapps and copy its name exactly.</div>
+    </div>
+    <div style="margin-bottom:1rem;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Which picking list(s) do you want to push?</label>
+      <div id="erpListPicker" style="display:flex;flex-direction:column;gap:4px;font-size:13px;"></div>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="bom">
+        <thead><tr><th>Product</th><th>Code</th><th>Enapps product ref</th><th>Sale price</th><th>Qty</th></tr></thead>
+        <tbody id="erpProductsBody"><tr><td colspan="5" style="color:var(--text-muted);padding:8px;">Tick a picking list above.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="actions-row" style="margin-top:1rem;">
+      <button class="btn-excel" onclick="erpSend(true)">&#128065; Preview payload</button>
+      <button class="btn-excel" onclick="erpSend(false)">&#128228; Push to Enapps</button>
+    </div>
+    <div id="erpResult" style="display:none;font-size:12px;font-family:monospace;white-space:pre-wrap;background:var(--bg);border:1px solid var(--border-strong);border-radius:var(--radius);padding:8px 10px;margin-top:0.75rem;max-height:260px;overflow:auto;"></div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 var SERVER = '';
@@ -777,6 +808,7 @@ function removePanel(id) {
   var el = document.getElementById('panel-' + id);
   if (el) el.remove();
   updateGrid();
+  erpRenderListPicker();
 }
 
 function clearAll() {
@@ -792,6 +824,10 @@ function clearAll() {
   document.getElementById('promptBar').style.display = 'none';
   document.getElementById('combinedWrap').style.display = 'none';
   document.getElementById('combinedBody').innerHTML = '';
+  document.getElementById('erpWrap').style.display = 'none';
+  document.getElementById('erpProjectId').value = '';
+  document.getElementById('erpResult').style.display = 'none';
+  ERP_ENTERED = {};
   document.getElementById('btnClearAll').style.display = 'none';
   bulkAnswers = {};
   document.getElementById('bulkBar').style.display = 'none';
@@ -1762,6 +1798,7 @@ function generateBOM(id) {
 
   if(Object.values(panels).some(function(x){return x.bom&&x.bom.length>0;}))
     document.getElementById('promptBar').style.display='block';
+  erpRenderListPicker();
 }
 
 function er(msg){return '<div class="err-box">'+msg+'</div>';}
@@ -1922,6 +1959,7 @@ function renderCombined() {
     return '<tr><td>'+r.pr+'</td><td>'+r.c+'</td><td>'+r.s+'</td><td>'+r.q+'</td></tr>';
   }).join('');
   window._combinedBom=rows;
+  erpRenderListPicker();
 }
 
 function calcCoils16(tm, supplier){
@@ -1975,6 +2013,117 @@ function exportCombined() {
   ws['!cols']=[{wch:28},{wch:20},{wch:55},{wch:10}];
   XLSX.utils.book_append_sheet(wb,ws,'Combined BOM');
   XLSX.writeFile(wb,'UFH_BOM_Combined.xlsx');
+}
+
+// ── Push to ERP (Enapps Project Order Lines) ──────────────────────────────
+// Standalone equivalent of The Hub's own picking-list Push-to-ERP modal. Hub already knows
+// which project it's open on and keeps a running per-WSO store of every generated list; this
+// tool has neither, so the user enters the project explicitly and everything pushed comes only
+// from what's live in this browser session right now (individual panels + the combined list,
+// whichever are ticked). The Enapps product ref is retyped/confirmed every push, same as Hub --
+// no saved code->ref mapping, deliberately, so a stale mapping can never silently misdirect a
+// later push at the wrong Enapps product.
+var ERP_ENTERED = {};   // code -> {product_id, sale_price} the user has typed this session, kept
+                        // across re-renders (ticking/unticking lists) so nothing already typed is lost.
+
+function erpListEntries() {
+  // {key, label, items}[] for every pushable list currently available: one per generated panel,
+  // plus 'combined' if the combined list has been built.
+  var out = [];
+  Object.keys(panels).forEach(function(k){
+    var p = panels[k];
+    if (!p.bom || !p.bom.length) return;
+    var label = (p.ref || p.floor_name || ('Design ' + k));
+    out.push({key: 'panel-' + k, label: label, items: p.bom});
+  });
+  if (window._combinedBom && document.getElementById('combinedWrap').style.display !== 'none') {
+    out.push({key: 'combined', label: 'Combined Picking List', items: window._combinedBom});
+  }
+  return out;
+}
+
+function erpRenderListPicker() {
+  var wrap = document.getElementById('erpWrap');
+  var entries = erpListEntries();
+  if (!entries.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  var picker = document.getElementById('erpListPicker');
+  var prevChecked = {};
+  picker.querySelectorAll('.erp-list-sel').forEach(function(cb){ prevChecked[cb.value] = cb.checked; });
+  picker.innerHTML = entries.map(function(e){
+    var checked = (e.key in prevChecked) ? prevChecked[e.key] : true;
+    return '<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" class="erp-list-sel" value="' + e.key + '" onchange="erpUpdateProducts()"' + (checked?' checked':'') + '> ' + e.label + '</label>';
+  }).join('');
+  erpUpdateProducts();
+}
+
+function erpDistinctProducts() {
+  var selected = Array.from(document.querySelectorAll('.erp-list-sel:checked')).map(function(cb){ return cb.value; });
+  var byKey = {}; erpListEntries().forEach(function(e){ byKey[e.key] = e.items; });
+  var out = {};
+  selected.forEach(function(key){
+    (byKey[key] || []).forEach(function(it){
+      var code = (it.c || '').trim();
+      if (!code) return;
+      var cur = out[code] || (out[code] = {pr: it.pr || '', description: it.s || it.pr || '', qty: 0});
+      cur.qty += parseFloat(it.q) || 0;
+    });
+  });
+  return out;
+}
+
+function erpUpdateProducts() {
+  // Remember whatever's currently typed before re-rendering, so ticking/unticking a list
+  // doesn't lose product refs/prices already entered for codes that are still selected.
+  document.querySelectorAll('#erpProductsBody tr[data-code]').forEach(function(tr){
+    var code = tr.getAttribute('data-code');
+    var pidEl = tr.querySelector('.erp-pid'), priceEl = tr.querySelector('.erp-price');
+    if (pidEl) ERP_ENTERED[code] = {product_id: pidEl.value.trim(), sale_price: parseFloat(priceEl.value) || 0};
+  });
+  var products = erpDistinctProducts();
+  var codes = Object.keys(products);
+  var body = document.getElementById('erpProductsBody');
+  if (!codes.length) {
+    body.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);padding:8px;">Tick a picking list above.</td></tr>';
+    return;
+  }
+  body.innerHTML = codes.map(function(code){
+    var p = products[code];
+    var entered = ERP_ENTERED[code];
+    var pid = entered ? entered.product_id : code;
+    var price = entered ? entered.sale_price : 0;
+    return '<tr data-code="' + code + '"><td>' + (p.pr||'') + '</td><td>' + code + '</td>' +
+      '<td><input class="erp-pid" value="' + pid.replace(/"/g,'&quot;') + '" placeholder="Enapps product ref" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text);"></td>' +
+      '<td><input class="erp-price" type="number" step="0.01" value="' + price + '" style="width:90px;font-size:12px;padding:4px 6px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text);"></td>' +
+      '<td>' + p.qty + '</td></tr>';
+  }).join('');
+}
+
+function erpSend(dryRun) {
+  var products = erpDistinctProducts();
+  var codes = Object.keys(products);
+  var resEl = document.getElementById('erpResult');
+  if (!codes.length) { resEl.style.display = 'block'; resEl.textContent = 'Tick at least one picking list first.'; return; }
+  var items = {}, erp_products = {};
+  codes.forEach(function(code){
+    items[code] = {description: products[code].description, qty: products[code].qty};
+    var row = document.querySelector('#erpProductsBody tr[data-code="' + code + '"]');
+    var pid = row ? row.querySelector('.erp-pid').value.trim() : '';
+    var price = row ? (parseFloat(row.querySelector('.erp-price').value) || 0) : 0;
+    ERP_ENTERED[code] = {product_id: pid, sale_price: price};
+    erp_products[code] = {product_id: pid, sale_price: price};
+  });
+  var project_id = document.getElementById('erpProjectId').value.trim();
+  resEl.style.display = 'block';
+  resEl.textContent = dryRun ? 'Building preview…' : 'Pushing to Enapps…';
+  fetch('/api/erp/push', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({project_id: project_id, items: items, erp_products: erp_products, dry_run: dryRun})
+  }).then(function(r){ return r.json(); }).then(function(res){
+    resEl.textContent = JSON.stringify(res, null, 2);
+  }).catch(function(e){
+    resEl.textContent = 'Request failed: ' + e;
+  });
 }
 
 // Tells "still the same server process" from "a new one has taken over" (a deploy) so a

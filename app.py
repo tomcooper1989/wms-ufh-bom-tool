@@ -8,6 +8,7 @@ import os, tempfile, functools, json, datetime, re, contextlib, uuid, hmac, hash
 
 # Import all extraction logic from server.py
 from server import scan_pdf_pages, scan_and_extract, extract_page
+import erp_connector
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('SECRET_KEY', 'change-this-in-production')
@@ -494,6 +495,54 @@ def _handle_pdf_request(endpoint):
         except: pass
 
     return jsonify(result)
+
+
+# ---------------------------------------------------------------
+# Push to ERP (Enapps Project Order Lines) -- standalone equivalent of The Hub's own
+# picking-list Push-to-ERP modal (Hub relies on its own per-project store; this tool has no
+# such store, so the browser sends the already-summed items and the per-code product refs
+# the user typed directly, on every push -- see erp_connector.py's module docstring).
+# ---------------------------------------------------------------
+
+@app.route('/api/erp/push', methods=['POST'])
+@login_required
+def api_erp_push():
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        if not erp_connector.is_configured():
+            return jsonify({'error': 'Enapps not connected — add ENAPPS_ACCESS_TOKEN + ENAPPS_URL in the environment.'})
+        items = data.get('items') or {}          # code -> {description, qty}
+        erp_products = data.get('erp_products') or {}   # code -> {product_id, sale_price}
+        lines, skipped = [], []
+        for code, info in items.items():
+            try:
+                qty = float((info or {}).get('qty') or 0)
+            except (TypeError, ValueError):
+                qty = 0
+            if qty <= 0:
+                continue
+            cfg = erp_products.get(code) or {}
+            pid = str(cfg.get('product_id') or '').strip()
+            if not pid:
+                skipped.append(code)
+                continue
+            lines.append({'product_id': pid, 'sale_price': cfg.get('sale_price', 0),
+                          'qty': int(round(qty)),
+                          'description': '[%s] %s' % (pid, (info or {}).get('description') or code)})
+        if not lines:
+            return jsonify({'error': 'Nothing to push — set an Enapps product ID for at least one item.',
+                            'skipped': skipped})
+        project_id = str(data.get('project_id') or '').strip()
+        if not project_id:
+            return jsonify({'error': "Enter the Project ID first — Enapps' full project name "
+                            "(open the project in Enapps and copy its name exactly)."})
+        dry_run = bool(data.get('dry_run', True))
+        res = erp_connector.push_pol_import(lines, project_id, dry_run=dry_run)
+        res['skipped'] = skipped
+        return jsonify(res)
+    except Exception as e:
+        app.logger.exception('ERP push failed')
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
