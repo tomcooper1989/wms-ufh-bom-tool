@@ -2059,31 +2059,29 @@ function erpListEntries() {
 
 function erpRenderListPicker() {
   var wrap = document.getElementById('erpWrap');
+  // Opened from inside The Hub's own Project tab (?wso=... -- see HUB_WSO near the top of this
+  // file): the project's already known there, AND the Hub has its own separate, already-working
+  // push mechanism for exactly this case (the created-list card's own "Push to Enapps", driven by
+  // the Hub's own project store -- no WSO lookup needed because the Hub already has the project
+  // context directly). This whole panel duplicates that with an extra, unnecessary WSO/Postgres-view
+  // lookup of its own, so it's just hidden entirely here rather than only trimming its WSO input
+  // block as before -- standalone (no HUB_WSO) is completely untouched, still the only place this
+  // panel is actually needed.
+  if (typeof HUB_WSO !== 'undefined' && HUB_WSO) { wrap.style.display = 'none'; return; }
   var entries = erpListEntries();
   if (!entries.length) { wrap.style.display = 'none'; return; }
   wrap.style.display = 'block';
-  // The moment the first picking list of the session exists, resolve the WSO and kick off the
-  // same Enapps lookup "Find on Enapps" does -- one-shot (a later panel completing must never
-  // overwrite a WSO the user's already looked up or edited), and only into an empty field, so
-  // anything already typed there is never clobbered.
+  // The moment the first picking list of the session exists, resolve the WSO from its filename and
+  // kick off the same Enapps lookup "Find on Enapps" does -- one-shot (a later panel completing
+  // must never overwrite a WSO the user's already looked up or edited), and only into an empty
+  // field, so anything already typed there is never clobbered.
   if (!ERP_WSO_AUTOFILLED) {
     ERP_WSO_AUTOFILLED = true;
-    // Opened from inside The Hub's own Project tab (?wso=... -- see HUB_WSO near the top of this
-    // file): that project is ALREADY known, so asking the user to type or "Find on Enapps" a WSO
-    // they've already navigated into is pure friction -- hide the whole WSO block and resolve it
-    // straight away instead. Standalone (no HUB_WSO) keeps the field-and-filename-guess flow
-    // exactly as it was; this never touches that path.
-    var wsoBlock = document.getElementById('erpWsoInputBlock');
     var pidInput = document.getElementById('erpProjectId');
-    if (typeof HUB_WSO !== 'undefined' && HUB_WSO) {
-      if (wsoBlock) wsoBlock.style.display = 'none';
-      if (!pidInput.value.trim()) { pidInput.value = HUB_WSO; erpLookupProject(); }
-    } else {
-      var wso = erpExtractWsoFromFilename(entries[0].filename);
-      if (wso && !pidInput.value.trim()) {
-        pidInput.value = wso;
-        erpLookupProject();
-      }
+    var wso = erpExtractWsoFromFilename(entries[0].filename);
+    if (wso && !pidInput.value.trim()) {
+      pidInput.value = wso;
+      erpLookupProject();
     }
   }
   var picker = document.getElementById('erpListPicker');
