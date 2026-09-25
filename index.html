@@ -590,6 +590,13 @@ function exportDashCSV() {
 var HUB_WSO = (function(){
   try { return new URLSearchParams(location.search).get('wso') || ''; } catch(e) { return ''; }
 })();
+// Set when the Hub already has this project's full Enapps name resolved (Project record's own
+// erp.project_name) -- lets Push to ERP skip its own WSO/Postgres-view lookup entirely rather than
+// repeat one the Hub's already done, since that lookup is exactly what's been failing separately
+// (see erpRenderListPicker's own comment).
+var HUB_PROJECT_NAME = (function(){
+  try { return new URLSearchParams(location.search).get('projectName') || ''; } catch(e) { return ''; }
+})();
 // The Hub's own page can't read this tool's scroll position (a cross-origin iframe can't expose its
 // contentWindow.scrollY to the parent at all -- a real browser security boundary), so its "minimise
 // the chrome above this tool" behaviour only ever fired from a manual button there. Forwarding our
@@ -2059,29 +2066,44 @@ function erpListEntries() {
 
 function erpRenderListPicker() {
   var wrap = document.getElementById('erpWrap');
-  // Opened from inside The Hub's own Project tab (?wso=... -- see HUB_WSO near the top of this
-  // file): the project's already known there, AND the Hub has its own separate, already-working
-  // push mechanism for exactly this case (the created-list card's own "Push to Enapps", driven by
-  // the Hub's own project store -- no WSO lookup needed because the Hub already has the project
-  // context directly). This whole panel duplicates that with an extra, unnecessary WSO/Postgres-view
-  // lookup of its own, so it's just hidden entirely here rather than only trimming its WSO input
-  // block as before -- standalone (no HUB_WSO) is completely untouched, still the only place this
-  // panel is actually needed.
-  if (typeof HUB_WSO !== 'undefined' && HUB_WSO) { wrap.style.display = 'none'; return; }
   var entries = erpListEntries();
   if (!entries.length) { wrap.style.display = 'none'; return; }
   wrap.style.display = 'block';
-  // The moment the first picking list of the session exists, resolve the WSO from its filename and
-  // kick off the same Enapps lookup "Find on Enapps" does -- one-shot (a later panel completing
-  // must never overwrite a WSO the user's already looked up or edited), and only into an empty
-  // field, so anything already typed there is never clobbered.
+  // The moment the first picking list of the session exists, resolve the project, one-shot (a
+  // later panel completing must never overwrite a WSO/name the user's already looked up or edited).
   if (!ERP_WSO_AUTOFILLED) {
     ERP_WSO_AUTOFILLED = true;
+    // Opened from inside The Hub's own Project tab (?wso=...): that project is ALREADY known, so
+    // asking the user to type or "Find on Enapps" a WSO they've already navigated into is pure
+    // friction -- hide just the WSO input box and resolve it straight away instead. This panel's
+    // own product list + per-line remove + Push button stay fully visible and usable either way --
+    // an earlier pass here hid the WHOLE panel on the theory that the Hub's own separate "Push
+    // ticked to ERP" (on the created-list card) already covers this, but that one only ticks/
+    // unticks whole picking lists, it has no per-line remove -- so hiding this panel silently took
+    // away the only place line-level removal existed. Standalone (no HUB_WSO) keeps the field-and-
+    // filename-guess flow exactly as it was; this never touches that path.
+    var wsoBlock = document.getElementById('erpWsoInputBlock');
     var pidInput = document.getElementById('erpProjectId');
-    var wso = erpExtractWsoFromFilename(entries[0].filename);
-    if (wso && !pidInput.value.trim()) {
-      pidInput.value = wso;
-      erpLookupProject();
+    if (typeof HUB_WSO !== 'undefined' && HUB_WSO) {
+      if (wsoBlock) wsoBlock.style.display = 'none';
+      if (!pidInput.value.trim()) {
+        // Prefer a name the Hub's already resolved (its Project record's own erp.project_name) --
+        // skips this tool's own WSO/Postgres-view lookup entirely, which is the thing that's been
+        // 401ing separately (see erpLookupProject's own error-surfacing). Only falls back to that
+        // lookup when the Hub hasn't resolved a name yet (e.g. never pulled from ERP on that record).
+        if (typeof HUB_PROJECT_NAME !== 'undefined' && HUB_PROJECT_NAME) {
+          pidInput.value = HUB_PROJECT_NAME;
+        } else {
+          pidInput.value = HUB_WSO;
+          erpLookupProject();
+        }
+      }
+    } else {
+      var wso = erpExtractWsoFromFilename(entries[0].filename);
+      if (wso && !pidInput.value.trim()) {
+        pidInput.value = wso;
+        erpLookupProject();
+      }
     }
   }
   var picker = document.getElementById('erpListPicker');
