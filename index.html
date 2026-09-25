@@ -108,13 +108,6 @@ table.bom tr:hover td { background: var(--bg); }
 .info-box { background: var(--accent-bg); border: 1px solid #bfdbfe; border-radius: var(--radius); padding: 7px 9px; color: #1e40af; font-size: 11px; margin-top: 0.6rem; }
 .warn-note { background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--radius); padding: 7px 9px; color: var(--warn-text); font-size: 11px; margin-top: 0.4rem; }
 .err-box { background: var(--danger-bg); border: 1px solid #fca5a5; border-radius: var(--radius); padding: 7px 9px; color: var(--danger); font-size: 12px; margin-bottom: 0.6rem; }
-.prompt-bar { max-width: 1600px; margin: 0 auto; padding: 0 1.5rem 1rem; display: none; }
-.prompt-inner { background: var(--accent-bg); border: 1px solid #bfdbfe; border-radius: var(--radius-lg); padding: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-.prompt-inner p { font-size: 14px; font-weight: 600; color: var(--accent); }
-.prompt-inner small { font-size: 12px; color: #1e40af; margin-top: 2px; display: block; }
-.prompt-btns { display: flex; gap: 8px; }
-.btn-combine { background: var(--accent); color: #fff; border: none; border-radius: var(--radius); padding: 8px 20px; font-size: 13px; font-weight: 600; cursor: pointer; }
-.btn-no { background: var(--surface); color: var(--text-muted); border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 8px 16px; font-size: 13px; cursor: pointer; }
 .combined-wrap { max-width: 1600px; margin: 0 auto; padding: 0 1.5rem 3rem; display: none; }
 .combined-inner { border-top: 2px solid var(--border-strong); padding-top: 1.5rem; margin-top: 0.5rem; }
 .combined-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem; }
@@ -282,18 +275,6 @@ table.bom tr:hover td { background: var(--bg); }
   <div class="drawings-grid" id="drawingsGrid"></div>
 </div>
 
-<div class="prompt-bar" id="promptBar">
-  <div class="prompt-inner">
-    <div>
-      <p>Generate a combined picking list?</p>
-      <small>Merge all generated BOMs into one list with quantities summed</small>
-    </div>
-    <div class="prompt-btns">
-      <button class="btn-combine" onclick="buildCombined()">Yes &#8212; combine all</button>
-      <button class="btn-no" onclick="document.getElementById('promptBar').style.display='none'">No thanks</button>
-    </div>
-  </div>
-</div>
 
 <div class="combined-wrap" id="combinedWrap">
   <div class="combined-inner">
@@ -346,7 +327,7 @@ table.bom tr:hover td { background: var(--bg); }
     </div>
     <div style="overflow-x:auto;">
       <table class="bom">
-        <thead><tr><th>Product</th><th>Code</th><th>Enapps product ref</th><th>Sale price</th><th>Qty</th></tr></thead>
+        <thead><tr><th>Product</th><th>Code</th><th>Specification</th><th>Qty</th><th></th></tr></thead>
         <tbody id="erpProductsBody"><tr><td colspan="5" style="color:var(--text-muted);padding:8px;">Tick a picking list above.</td></tr></tbody>
       </table>
     </div>
@@ -841,7 +822,6 @@ function clearAll() {
   document.getElementById('progressWrap').style.display = 'none';
   document.getElementById('progressFill').style.width = '0%';
   document.getElementById('progressPills').innerHTML = '';
-  document.getElementById('promptBar').style.display = 'none';
   document.getElementById('combinedWrap').style.display = 'none';
   document.getElementById('combinedBody').innerHTML = '';
   document.getElementById('erpWrap').style.display = 'none';
@@ -849,7 +829,7 @@ function clearAll() {
   document.getElementById('erpProjectIdHint').textContent = "Enter the WSO — it's looked up on Enapps and resolved to its own full project name automatically.";
   document.getElementById('erpProjectIdHint').style.color = 'var(--text-muted)';
   document.getElementById('erpResult').style.display = 'none';
-  ERP_ENTERED = {};
+  ERP_EXCLUDED_CODES = new Set();
   ERP_WSO_AUTOFILLED = false;
   document.getElementById('btnClearAll').style.display = 'none';
   bulkAnswers = {};
@@ -1819,9 +1799,12 @@ function generateBOM(id) {
     } catch (e) {}
   }
 
-  if(Object.values(panels).some(function(x){return x.bom&&x.bom.length>0;}))
-    document.getElementById('promptBar').style.display='block';
-  erpRenderListPicker();
+  // The combined list builds itself the moment any BOM exists -- no "combine all?" prompt to
+  // click through first.
+  if(Object.values(panels).some(function(x){return x.bom&&x.bom.length>0;})){
+    document.getElementById('combinedWrap').style.display='block';
+    renderCombined();
+  }
 }
 
 function er(msg){return '<div class="err-box">'+msg+'</div>';}
@@ -1835,14 +1818,6 @@ function exportExcel(id) {
   ws['!cols']=[{wch:28},{wch:20},{wch:55},{wch:10}];
   XLSX.utils.book_append_sheet(wb,ws,'BOM');
   XLSX.writeFile(wb,'UFH_BOM_'+(p.ref||'Drawing')+'.xlsx');
-}
-
-function buildCombined() {
-  document.getElementById('promptBar').style.display='none';
-  renderCombined();
-  var wrap=document.getElementById('combinedWrap');
-  wrap.style.display='block';
-  wrap.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
 var bulkAnswers = {};
@@ -1948,9 +1923,11 @@ var PIPE16_SUPPLIER_BY_CODE={'30500':'AmbiFlex','30240':'AmbiFlex','30120':'Ambi
 
 function rebuildCombined(){ renderCombined(); }
 
-function renderCombined() {
-  var allPanels=Object.values(panels).filter(function(p){return p.bom&&p.bom.length>0;});
-  if(!allPanels.length)return;
+// Shared by the Combined Picking List (always every panel) and the Push to ERP product list
+// (whichever panels are ticked there) -- both must merge/consolidate identically, so there is
+// exactly one place this math lives.
+function computeCombinedBom(allPanels) {
+  if(!allPanels.length)return [];
   var method=document.getElementById('pipeCombineMethod');
   var useConsolidate=method&&method.value==='consolidate';
   var merged={};
@@ -1977,7 +1954,13 @@ function renderCombined() {
     });
     if(rawMetres12>0)calcCoils12(rawMetres12*1.1).forEach(function(c){merged[c.c]=c;});
   }
-  var rows=Object.values(merged);
+  return Object.values(merged);
+}
+
+function renderCombined() {
+  var allPanels=Object.values(panels).filter(function(p){return p.bom&&p.bom.length>0;});
+  if(!allPanels.length)return;
+  var rows=computeCombinedBom(allPanels);
   document.getElementById('combinedBody').innerHTML=rows.map(function(r){
     return '<tr><td>'+r.pr+'</td><td>'+r.c+'</td><td>'+r.s+'</td><td>'+r.q+'</td></tr>';
   }).join('');
@@ -2042,13 +2025,14 @@ function exportCombined() {
 // Standalone equivalent of The Hub's own picking-list Push-to-ERP modal. Hub already knows
 // which project it's open on and keeps a running per-WSO store of every generated list; this
 // tool has neither, so the user enters the project explicitly and everything pushed comes only
-// from what's live in this browser session right now (individual panels + the combined list,
-// whichever are ticked). The Enapps product ref is retyped/confirmed every push, same as Hub --
-// no saved code->ref mapping, deliberately, so a stale mapping can never silently misdirect a
-// later push at the wrong Enapps product.
-var ERP_ENTERED = {};   // code -> {product_id, sale_price} the user has typed this session, kept
-                        // across re-renders (ticking/unticking lists) so nothing already typed is lost.
-var ERP_WSO_AUTOFILLED = false;   // only auto-fill the WSO field once per session -- see erpRenderListPicker.
+// from what's live in this browser session right now. The product list is exactly the Combined
+// Picking List (same computeCombinedBom(), same pipe-method/exclude-500 state) run over whichever
+// panels are ticked below -- it only differs from the visible combined list when a WSO is
+// unticked, or a line's been removed with its own x. No Enapps product ref / sale price to fill
+// in: every line's own WMS code IS the Enapps product reference, sent with sale_cost/sale_price
+// both 0 (this is a stock picking list, not a priced sale).
+var ERP_EXCLUDED_CODES = new Set();   // codes the user has explicitly x'd off this push.
+var ERP_WSO_AUTOFILLED = false;       // only auto-fill the WSO field once per session.
 
 function erpExtractWsoFromFilename(name) {
   var m = /WSO\d+(?:-[A-Za-z0-9]+)?/i.exec(name || '');
@@ -2056,18 +2040,14 @@ function erpExtractWsoFromFilename(name) {
 }
 
 function erpListEntries() {
-  // {key, label, items, filename}[] for every pushable list currently available: one per
-  // generated panel, plus 'combined' if the combined list has been built.
+  // {key, label, panel, filename}[] -- one per generated panel (a WSO's own picking list).
   var out = [];
   Object.keys(panels).forEach(function(k){
     var p = panels[k];
     if (!p.bom || !p.bom.length) return;
     var label = (p.ref || p.floor_name || ('Design ' + k));
-    out.push({key: 'panel-' + k, label: label, items: p.bom, filename: p.filename});
+    out.push({key: 'panel-' + k, label: label, panel: p, filename: p.filename});
   });
-  if (window._combinedBom && document.getElementById('combinedWrap').style.display !== 'none') {
-    out.push({key: 'combined', label: 'Combined Picking List', items: window._combinedBom});
-  }
   return out;
 }
 
@@ -2082,8 +2062,7 @@ function erpRenderListPicker() {
   // and only into an empty field, so anything already typed there is never clobbered.
   if (!ERP_WSO_AUTOFILLED) {
     ERP_WSO_AUTOFILLED = true;
-    var firstPanel = entries.filter(function(e){ return e.key !== 'combined'; })[0];
-    var wso = firstPanel ? erpExtractWsoFromFilename(firstPanel.filename) : '';
+    var wso = erpExtractWsoFromFilename(entries[0].filename);
     var pidInput = document.getElementById('erpProjectId');
     if (wso && !pidInput.value.trim()) {
       pidInput.value = wso;
@@ -2100,46 +2079,37 @@ function erpRenderListPicker() {
   erpUpdateProducts();
 }
 
-function erpDistinctProducts() {
-  var selected = Array.from(document.querySelectorAll('.erp-list-sel:checked')).map(function(cb){ return cb.value; });
-  var byKey = {}; erpListEntries().forEach(function(e){ byKey[e.key] = e.items; });
-  var out = {};
-  selected.forEach(function(key){
-    (byKey[key] || []).forEach(function(it){
-      var code = (it.c || '').trim();
-      if (!code) return;
-      var cur = out[code] || (out[code] = {pr: it.pr || '', description: it.s || it.pr || '', qty: 0});
-      cur.qty += parseFloat(it.q) || 0;
-    });
-  });
-  return out;
-}
+function erpEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function erpAttrEsc(s){ return erpEsc(s).replace(/"/g,'&quot;'); }
 
+// Recomputes the push list from scratch: same computeCombinedBom() the Combined Picking List
+// uses (so the current pipe method / exclude-500 state is always respected), run over only the
+// ticked panels, minus anything the user's individually removed with its row's x.
 function erpUpdateProducts() {
-  // Remember whatever's currently typed before re-rendering, so ticking/unticking a list
-  // doesn't lose product refs/prices already entered for codes that are still selected.
-  document.querySelectorAll('#erpProductsBody tr[data-code]').forEach(function(tr){
-    var code = tr.getAttribute('data-code');
-    var pidEl = tr.querySelector('.erp-pid'), priceEl = tr.querySelector('.erp-price');
-    if (pidEl) ERP_ENTERED[code] = {product_id: pidEl.value.trim(), sale_price: parseFloat(priceEl.value) || 0};
-  });
-  var products = erpDistinctProducts();
-  var codes = Object.keys(products);
+  var selectedKeys = Array.from(document.querySelectorAll('.erp-list-sel:checked')).map(function(cb){ return cb.value; });
+  var byKey = {}; erpListEntries().forEach(function(e){ byKey[e.key] = e.panel; });
+  var selectedPanels = selectedKeys.map(function(k){ return byKey[k]; }).filter(Boolean);
+  var rows = computeCombinedBom(selectedPanels).filter(function(r){ return !ERP_EXCLUDED_CODES.has(r.c || r.pr); });
+  window._erpPushRows = rows;
   var body = document.getElementById('erpProductsBody');
-  if (!codes.length) {
+  if (!rows.length) {
     body.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);padding:8px;">Tick a picking list above.</td></tr>';
     return;
   }
-  body.innerHTML = codes.map(function(code){
-    var p = products[code];
-    var entered = ERP_ENTERED[code];
-    var pid = entered ? entered.product_id : code;
-    var price = entered ? entered.sale_price : 0;
-    return '<tr data-code="' + code + '"><td>' + (p.pr||'') + '</td><td>' + code + '</td>' +
-      '<td><input class="erp-pid" value="' + pid.replace(/"/g,'&quot;') + '" placeholder="Enapps product ref" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text);"></td>' +
-      '<td><input class="erp-price" type="number" step="0.01" value="' + price + '" style="width:90px;font-size:12px;padding:4px 6px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text);"></td>' +
-      '<td>' + p.qty + '</td></tr>';
+  body.innerHTML = rows.map(function(r){
+    var code = r.c || r.pr;
+    return '<tr><td>' + erpEsc(r.pr) + '</td><td>' + erpEsc(r.c) + '</td><td>' + erpEsc(r.s) + '</td><td>' + r.q + '</td>' +
+      '<td style="text-align:center;"><button type="button" class="erp-remove-btn" data-code="' + erpAttrEsc(code) +
+      '" title="Remove this line from the push" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;">&times;</button></td></tr>';
   }).join('');
+  body.querySelectorAll('.erp-remove-btn').forEach(function(btn){
+    btn.onclick = function(){ erpRemoveLine(btn.getAttribute('data-code')); };
+  });
+}
+
+function erpRemoveLine(code) {
+  ERP_EXCLUDED_CODES.add(code);
+  erpUpdateProducts();
 }
 
 function erpLookupProject() {
@@ -2166,18 +2136,17 @@ function erpLookupProject() {
 }
 
 function erpSend(dryRun) {
-  var products = erpDistinctProducts();
-  var codes = Object.keys(products);
+  var rows = window._erpPushRows || [];
   var resEl = document.getElementById('erpResult');
-  if (!codes.length) { resEl.style.display = 'block'; resEl.textContent = 'Tick at least one picking list first.'; return; }
+  if (!rows.length) { resEl.style.display = 'block'; resEl.textContent = 'Tick at least one picking list first.'; return; }
+  // No separate Enapps product ref to fill in -- every line's own WMS code IS the Enapps product
+  // reference, and this is a stock picking list (not a priced sale), so sale_price is always 0.
   var items = {}, erp_products = {};
-  codes.forEach(function(code){
-    items[code] = {description: products[code].description, qty: products[code].qty};
-    var row = document.querySelector('#erpProductsBody tr[data-code="' + code + '"]');
-    var pid = row ? row.querySelector('.erp-pid').value.trim() : '';
-    var price = row ? (parseFloat(row.querySelector('.erp-price').value) || 0) : 0;
-    ERP_ENTERED[code] = {product_id: pid, sale_price: price};
-    erp_products[code] = {product_id: pid, sale_price: price};
+  rows.forEach(function(r){
+    var code = (r.c || r.pr || '').trim();
+    if (!code) return;
+    items[code] = {description: r.s || r.pr || '', qty: r.q};
+    erp_products[code] = {product_id: code, sale_price: 0};
   });
   var project_id = document.getElementById('erpProjectId').value.trim();
   resEl.style.display = 'block';
