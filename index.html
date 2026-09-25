@@ -338,6 +338,7 @@ table.bom tr:hover td { background: var(--bg); }
         <button class="btn-excel" type="button" onclick="erpLookupProject()" style="padding:8px 14px;font-size:12px;white-space:nowrap;">Find on Enapps</button>
       </div>
       <div id="erpProjectIdHint" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Enter the WSO &#8212; it's looked up on Enapps and resolved to its own full project name automatically.</div>
+      <button onclick="erpSend(false)" style="margin-top:12px;width:100%;max-width:420px;padding:14px 20px;font-size:15px;font-weight:700;background:var(--success);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;box-shadow:0 3px 10px rgba(22,163,74,0.35);">&#128640; Push to Enapps</button>
     </div>
     <div style="margin-bottom:1rem;">
       <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Which picking list(s) do you want to push?</label>
@@ -351,7 +352,6 @@ table.bom tr:hover td { background: var(--bg); }
     </div>
     <div class="actions-row" style="margin-top:1rem;">
       <button class="btn-excel" onclick="erpSend(true)">&#128065; Preview payload</button>
-      <button class="btn-excel" onclick="erpSend(false)">&#128228; Push to Enapps</button>
     </div>
     <div id="erpResult" style="display:none;font-size:12px;font-family:monospace;white-space:pre-wrap;background:var(--bg);border:1px solid var(--border-strong);border-radius:var(--radius);padding:8px 10px;margin-top:0.75rem;max-height:260px;overflow:auto;"></div>
   </div>
