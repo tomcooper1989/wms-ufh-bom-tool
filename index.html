@@ -602,6 +602,22 @@ function exportDashCSV() {
 var HUB_WSO = (function(){
   try { return new URLSearchParams(location.search).get('wso') || ''; } catch(e) { return ''; }
 })();
+// The Hub's own page can't read this tool's scroll position (a cross-origin iframe can't expose its
+// contentWindow.scrollY to the parent at all -- a real browser security boundary), so its "minimise
+// the chrome above this tool" behaviour only ever fired from a manual button there. Forwarding our
+// OWN scroll position up via postMessage is the one channel that actually works cross-origin;
+// rAF-throttled, silent no-op standalone (no HUB_WSO) or outside an iframe.
+if (HUB_WSO && window.parent !== window) {
+  var _scrollTicking = false;
+  window.addEventListener('scroll', function(){
+    if (_scrollTicking) return;
+    _scrollTicking = true;
+    requestAnimationFrame(function(){
+      try { window.parent.postMessage({type: 'tool_scroll', wso: HUB_WSO, scrollY: window.scrollY||0}, '*'); } catch(e) {}
+      _scrollTicking = false;
+    });
+  }, {passive: true});
+}
 
 // ── Name capture ──
 var _currentUser = '';
@@ -2143,15 +2159,53 @@ function erpSend(dryRun) {
   });
   var project_id = document.getElementById('erpProjectId').value.trim();
   resEl.style.display = 'block';
-  resEl.textContent = dryRun ? 'Building preview…' : 'Pushing to Enapps…';
+  resEl.innerHTML = dryRun ? 'Building preview…' : 'Pushing to Enapps…';
   fetch('/api/erp/push', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({project_id: project_id, items: items, erp_products: erp_products, dry_run: dryRun})
   }).then(function(r){ return r.json(); }).then(function(res){
-    resEl.textContent = JSON.stringify(res, null, 2);
+    erpRenderResult(res, dryRun, project_id);
   }).catch(function(e){
     resEl.textContent = 'Request failed: ' + e;
   });
+}
+
+function erpPayloadLineCount(payload) {
+  if (!payload || !payload.import_data) return 0;
+  var n = 0;
+  Object.keys(payload.import_data).forEach(function(k){ n += (payload.import_data[k] || []).length; });
+  return n;
+}
+
+// Renders the push/preview result as a collapsible block: a one-line summary always visible,
+// with the full raw payload/response tucked underneath. Kept open for a preview (that's the
+// point of it) or an error (needs attention), but collapsed once a real push has succeeded --
+// the raw JSON isn't something to leave sitting on screen once the push has actually landed.
+function erpRenderResult(res, dryRun, projectId) {
+  var resEl = document.getElementById('erpResult');
+  var esc = function(s){ return String(s).replace(/</g, '&lt;'); };
+  var errMsg = res.error || null;
+  if (!errMsg && res.result && typeof res.result === 'object') {
+    if (res.result.error) errMsg = res.result.error.message || JSON.stringify(res.result.error);
+    else if (res.result.title === 'Warning') errMsg = 'Enapps rejected the push — see details below.';
+  }
+  var lineCount = erpPayloadLineCount(res.payload);
+  var skipped = res.skipped || [];
+  var summary, open;
+  if (errMsg) {
+    summary = '✖ ' + errMsg;
+    open = true;
+  } else if (dryRun) {
+    summary = '👁 Preview — ' + lineCount + ' line(s) for "' + projectId + '"';
+    open = true;
+  } else {
+    summary = '✓ Pushed ' + lineCount + ' line(s) to Enapps for "' + projectId + '"' +
+      (skipped.length ? (' — ' + skipped.length + ' skipped (no product ref set)') : '');
+    open = false;
+  }
+  resEl.innerHTML = '<details' + (open ? ' open' : '') + '><summary style="cursor:pointer;font-family:inherit;font-weight:600;">' +
+    esc(summary) + '</summary><pre style="margin:8px 0 0;white-space:pre-wrap;font-family:monospace;">' +
+    esc(JSON.stringify(res, null, 2)) + '</pre></details>';
 }
 
 // Tells "still the same server process" from "a new one has taken over" (a deploy) so a
