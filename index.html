@@ -2388,6 +2388,12 @@ function pushSeparateToErp() {
   var entries = Object.values(panels).filter(function(p){ return p.bom && p.bom.length; });
   if (!entries.length) { resEl.innerHTML = 'No picking lists with lines yet.'; return; }
   resEl.innerHTML = '';
+  // Same synchronous-blank-tab-then-redirect trick Push Combined uses (open it now, before any
+  // async work, so the browser never treats it as an unrequested popup) -- opened ONCE up front
+  // rather than per-drawing, since every push in this sequence lands on the SAME Enapps project;
+  // redirected once the whole sequence finishes, to whichever push actually returned a project_url.
+  var pendingWin = window.open('', '_blank');
+  var lastProjectUrl = null;
   entries.reduce(function(chain, p){
     return chain.then(function(){
       var label = p.ref || p.filename || 'Untitled';
@@ -2402,12 +2408,17 @@ function pushSeparateToErp() {
         }
         row.textContent = errMsg ? ('✖ ' + label + ' — ' + errMsg) : ('✓ ' + label + ' — pushed ' + erpPayloadLineCount(res.payload) + ' line(s)');
         row.style.color = errMsg ? 'var(--warn-text)' : 'var(--success)';
+        if (!errMsg && res.project_url) lastProjectUrl = res.project_url;
       }).catch(function(e){
         row.textContent = '✖ ' + label + ' — request failed: ' + e;
         row.style.color = 'var(--warn-text)';
       });
     });
-  }, Promise.resolve()).then(function(){ refreshSentHistory(); });
+  }, Promise.resolve()).then(function(){
+    refreshSentHistory();
+    if (lastProjectUrl && pendingWin) pendingWin.location = lastProjectUrl;
+    else if (pendingWin) pendingWin.close();
+  });
 }
 
 function erpPayloadLineCount(payload) {
