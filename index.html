@@ -313,15 +313,6 @@ table.bom tr:hover td { background: var(--bg); }
   </div>
 </div>
 
-<div class="combined-wrap" id="pushSeparateWrap" style="display:none;">
-  <div class="combined-inner">
-    <div class="combined-title">Push separate Pick List(s) to ERP</div>
-    <div class="combined-sub">Each drawing above goes to Enapps as its own, separate set of lines &#8212; not merged with the others</div>
-    <button class="btn-excel" onclick="pushSeparateToErp()" style="margin-top:14px;width:100%;max-width:700px;padding:22px 28px;font-size:18px;font-weight:700;background:var(--success);border-color:var(--success);color:#fff;box-shadow:0 3px 10px rgba(22,163,74,0.35);">&#128640; Push separate Pick List(s) to ERP</button>
-    <div id="separatePushResults" style="font-size:12px;margin-top:10px;"></div>
-  </div>
-</div>
-
 <div class="combined-wrap" id="combinedWrap">
   <div class="combined-inner">
     <div class="combined-header">
@@ -351,6 +342,15 @@ table.bom tr:hover td { background: var(--bg); }
       <button class="btn-excel" onclick="pushCombinedToErp()" style="width:100%;max-width:700px;padding:22px 28px;font-size:18px;font-weight:700;background:var(--success);border-color:var(--success);color:#fff;box-shadow:0 3px 10px rgba(22,163,74,0.35);">&#128640; Push Combined to ERP</button>
     </div>
     <div id="combinedPushResult" style="display:none;font-size:12px;margin-top:8px;"></div>
+  </div>
+</div>
+
+<div class="combined-wrap" id="pushSeparateWrap" style="display:none;">
+  <div class="combined-inner">
+    <div class="combined-title">Push separate Pick List(s) to ERP</div>
+    <div class="combined-sub">Each drawing above goes to Enapps as its own, separate set of lines &#8212; not merged with the others</div>
+    <button class="btn-excel" onclick="pushSeparateToErp()" style="margin-top:14px;width:100%;max-width:700px;padding:22px 28px;font-size:18px;font-weight:700;background:var(--success);border-color:var(--success);color:#fff;box-shadow:0 3px 10px rgba(22,163,74,0.35);">&#128640; Push separate Pick List(s) to ERP</button>
+    <div id="separatePushResults" style="font-size:12px;margin-top:10px;"></div>
   </div>
 </div>
 
