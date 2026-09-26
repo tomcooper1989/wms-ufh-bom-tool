@@ -667,6 +667,32 @@ def api_erp_push():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/erp/push_log_record', methods=['POST'])
+@login_required
+def api_erp_push_log_record():
+    """Record-only, no Enapps call -- for a push that actually went through The Hub's own bridge
+    instead of /api/erp/push above (see postErpPushViaHub in index.html), which means it never hit
+    this app's own logging at all. Called by the browser right after it gets that push's result
+    back from the Hub, so this history stays accurate regardless of which path actually did the
+    push. Trusts the caller's own {ok, line_count, error} -- this endpoint's only job is writing
+    down what the browser already knows happened, not verifying it against Enapps itself."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        append_erp_push_log({
+            'ts': datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+            'user': str(data.get('user', '')).strip()[:80],
+            'project_id': str(data.get('project_id', '')).strip(),
+            'ref': str(data.get('ref') or 'Combined').strip()[:80],
+            'line_count': int(data.get('line_count') or 0),
+            'ok': bool(data.get('ok')),
+            'error': (str(data.get('error'))[:300] if data.get('error') else None),
+        })
+        return jsonify({'ok': True})
+    except Exception as e:
+        app.logger.exception('failed to record ERP push log entry (via Hub bridge)')
+        return jsonify({'ok': False, 'error': str(e)})
+
+
 @app.route('/api/erp/push_log')
 @login_required
 def api_erp_push_log():

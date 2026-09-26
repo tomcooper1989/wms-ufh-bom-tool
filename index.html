@@ -2292,8 +2292,66 @@ function buildErpItems(rows) {
 // One real POST to /api/erp/push -- ref names which picking list this is for the server-side
 // history log only (never sent to Enapps itself). Returns the fetch promise so callers needing
 // to run several of these in sequence (pushSeparateToErp) can await each one in turn.
+// Reply-matching for postErpPushViaHub below -- one push at a time in practice (pushSeparateToErp
+// runs its own pushes one after another, never concurrently), but a requestId still keeps a
+// stray/late reply from ever resolving the wrong call.
+var _PUSH_REQ_ID = 0;
+var _PUSH_PENDING = {};
+window.addEventListener('message', function(event){
+  var d = event.data || {};
+  // Trust by SOURCE (must genuinely be whoever is framing this page), not by origin string --
+  // unlike the Hub validating this tool's own fixed origin, the Hub itself could legitimately be
+  // any of several origins (production, staging, local dev), so there's no one fixed string to
+  // check here instead.
+  if (d.type === 'push_to_erp_response' && event.source === window.parent && _PUSH_PENDING[d.requestId]) {
+    var resolve = _PUSH_PENDING[d.requestId];
+    delete _PUSH_PENDING[d.requestId];
+    resolve(d.result || {error: 'Empty response from Hub.'});
+  }
+});
+
+// Hands the push to The Hub instead of pushing from here -- see the Hub's own
+// push_to_erp_request handler for why: same erp_connector/push_pol_import either way, just using
+// the Hub's own credentials (confirmed working) rather than this tool's separately-broken ones.
+function postErpPushViaHub(items, erp_products, project_id, dry_run, ref) {
+  return new Promise(function(resolve){
+    var requestId = 'push-' + (++_PUSH_REQ_ID) + '-' + Date.now();
+    _PUSH_PENDING[requestId] = resolve;
+    window.parent.postMessage({type: 'push_to_erp_request', requestId: requestId, project_id: project_id,
+      items: items, erp_products: erp_products, dry_run: dry_run, ref: ref}, '*');
+    // The Hub should always reply -- this is just so a genuinely lost message (closed tab mid-
+    // flight, etc.) doesn't leave the UI hung on "Pushing..." forever.
+    setTimeout(function(){
+      if (_PUSH_PENDING[requestId]) { delete _PUSH_PENDING[requestId]; resolve({error: 'No response from The Hub (timed out).'}); }
+    }, 25000);
+  });
+}
+
 function postErpPush(rows, project_id, dry_run, ref) {
   var built = buildErpItems(rows);
+  // Opened from inside a Hub project -- route the actual Enapps call through the Hub's own
+  // server instead of this tool's own /api/erp/push (see postErpPushViaHub's own comment). That
+  // means this app's own /api/erp/push never runs for this push, so it never gets its usual
+  // history log entry either -- record one here instead, straight from the result the Hub just
+  // handed back, so the "Sent to ERP" bar stays accurate regardless of which path did the push.
+  if (typeof HUB_WSO !== 'undefined' && HUB_WSO && window.parent !== window) {
+    return postErpPushViaHub(built.items, built.erp_products, project_id, dry_run, ref).then(function(res){
+      if (!dry_run) {
+        var result = res && res.result;
+        var errVal = res && res.error;
+        if (!errVal && result && typeof result === 'object') {
+          if (result.error) errVal = (result.error && result.error.message) || result.error;
+          else if (result.title === 'Warning') errVal = 'Enapps rejected this push.';
+        }
+        fetch('/api/erp/push_log_record', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({project_id: project_id, ref: ref, user: getCurrentUser(),
+            line_count: erpPayloadLineCount(res && res.payload), ok: !errVal, error: errVal || null})
+        }).catch(function(){});
+      }
+      return res;
+    });
+  }
   return fetch('/api/erp/push', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({project_id: project_id, items: built.items, erp_products: built.erp_products,
