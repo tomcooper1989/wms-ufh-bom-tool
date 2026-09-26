@@ -5,6 +5,7 @@ Deployed on Railway. Users access via browser, no local install needed.
 
 from flask import Flask, request, jsonify, send_from_directory, redirect, session
 import os, tempfile, functools, json, datetime, re, contextlib, uuid, hmac, hashlib, base64, time
+import urllib.request, urllib.error
 
 # Import all extraction logic from server.py
 from server import scan_pdf_pages, scan_and_extract, extract_page
@@ -581,46 +582,65 @@ def api_erp_project_by_wso():
 @app.route('/api/erp/push', methods=['POST'])
 @login_required
 def api_erp_push():
+    # This tool's own Enapps login is separately broken (same erp_connector, same push logic as
+    # the Hub's own -- confirmed working there -- this app's own API user/token just isn't
+    # authorised on Enapps' side; see this session's own investigation). Rather than call
+    # erp_connector.push_pol_import here directly, every push -- standalone or not -- now goes
+    # through the Hub's own credentials instead. A push made from inside a Hub project already
+    # does this via the browser's own postMessage bridge (postErpPushViaHub in index.html, straight
+    # to the Hub's page); this route is the SAME bridge for genuinely standalone use, just
+    # server-to-server since there's no Hub page open in the browser in that case at all.
+    # auth.verify_bridge_secret on the Hub's own side is the matching half of this handshake.
     try:
         data = request.get_json(force=True, silent=True) or {}
-        if not erp_connector.is_configured():
-            return jsonify({'error': 'Enapps not connected — add ENAPPS_ACCESS_TOKEN + ENAPPS_URL in the environment.'})
-        items = data.get('items') or {}          # code -> {description, qty}
-        erp_products = data.get('erp_products') or {}   # code -> {product_id, sale_price}
-        lines, skipped = [], []
+        items = data.get('items') or {}                 # code -> {description, qty}
+        erp_products = data.get('erp_products') or {}    # code -> {product_id, sale_price}
+        project_id = str(data.get('project_id') or '').strip()
+        dry_run = bool(data.get('dry_run', True))
+        ref = str(data.get('ref') or 'Combined').strip()[:80]
+
+        # Same "does this line actually have a qty and a product id" rule the Hub's own route
+        # applies -- checked here too just so an obviously-empty push (or a missing project id)
+        # fails fast without a round trip, and the log entry below has a real line count.
+        line_count = 0
         for code, info in items.items():
             try:
                 qty = float((info or {}).get('qty') or 0)
             except (TypeError, ValueError):
                 qty = 0
-            if qty <= 0:
-                continue
-            cfg = erp_products.get(code) or {}
-            pid = str(cfg.get('product_id') or '').strip()
-            if not pid:
-                skipped.append(code)
-                continue
-            lines.append({'product_id': pid, 'sale_price': cfg.get('sale_price', 0),
-                          'qty': int(round(qty)),
-                          'description': '[%s] %s' % (pid, (info or {}).get('description') or code)})
-        if not lines:
-            return jsonify({'error': 'Nothing to push — set an Enapps product ID for at least one item.',
-                            'skipped': skipped})
-        project_id = str(data.get('project_id') or '').strip()
+            if qty > 0 and str((erp_products.get(code) or {}).get('product_id') or '').strip():
+                line_count += 1
+        if not line_count:
+            return jsonify({'error': 'Nothing to push — set an Enapps product ID for at least one item.'})
         if not project_id:
             return jsonify({'error': "Enter the Project ID first — Enapps' full project name "
                             "(open the project in Enapps and copy its name exactly)."})
-        dry_run = bool(data.get('dry_run', True))
-        # A REAL push (dry_run False) must be logged whether it succeeds, is rejected, or raises
-        # outright (e.g. an auth failure) -- this is exactly what the "Sent to ERP" history exists
-        # to answer ("did this already go, and what happened"), so a raised exception silently
-        # skipping the log entry (the whole point of this history) would be worse than logging one
-        # more failure. push_pol_import itself is the only thing here that can raise.
+
+        hub_url = os.environ.get('HUB_BASE_URL', 'https://hub.wms-uk.com').rstrip('/')
+        req = urllib.request.Request(
+            hub_url + '/api/picking/push_items_to_erp',
+            data=json.dumps({'project_id': project_id, 'items': items, 'erp_products': erp_products,
+                             'dry_run': dry_run, 'ref': ref}).encode(),
+            method='POST',
+            headers={'Content-Type': 'application/json', 'X-Hub-Bridge-Secret': os.environ.get('HUB_SSO_SECRET', '')},
+        )
+        # A REAL push (dry_run False) must be logged whether it succeeds, is rejected, or the
+        # bridge call itself fails outright (Hub unreachable, secret mismatch, etc.) -- this is
+        # exactly what the "Sent to ERP" history exists to answer ("did this already go, and what
+        # happened"), so a failure here silently skipping the log entry would be worse than
+        # logging one more failure.
         push_error = None
+        res = None
         try:
-            res = erp_connector.push_pol_import(lines, project_id, dry_run=dry_run)
+            with urllib.request.urlopen(req, timeout=125) as r:
+                res = json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            try:
+                res = json.loads(e.read().decode())
+                push_error = res.get('error') or ('Hub bridge returned %s' % e.code)
+            except Exception:
+                push_error = 'Hub bridge returned %s' % e.code
         except Exception as e:
-            res = None
             push_error = str(e)
 
         if not dry_run:
@@ -638,8 +658,8 @@ def api_erp_push():
                     'ts': datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
                     'user': str(data.get('user', '')).strip()[:80],
                     'project_id': project_id,
-                    'ref': str(data.get('ref') or 'Combined').strip()[:80],
-                    'line_count': len(lines),
+                    'ref': ref,
+                    'line_count': line_count,
                     'ok': not rejected,
                     'error': log_err,
                 })
@@ -647,23 +667,10 @@ def api_erp_push():
                 app.logger.exception('failed to record ERP push log entry')
 
         if push_error is not None:
-            raise RuntimeError(push_error)
-
-        res['skipped'] = skipped
-        # On a genuine live success, look up the project's Enapps web URL so the browser can jump
-        # straight to its Project Order Lines page. Best-effort and silent on failure -- a rejected
-        # push (still a 200 with the rejection sitting inside 'result') never gets a URL, and a
-        # lookup problem here must never mask whether the push itself actually landed.
-        if not dry_run and not rejected:
-            try:
-                proj = erp_connector.find_ea_project_by_wso(project_id)
-                if proj and proj.get('id'):
-                    res['project_url'] = erp_connector.project_web_url(proj['id'], proj.get('name') or project_id)
-            except Exception:
-                pass
+            return jsonify({'error': push_error}), 502
         return jsonify(res)
     except Exception as e:
-        app.logger.exception('ERP push failed')
+        app.logger.exception('ERP push (via Hub bridge) failed')
         return jsonify({'error': str(e)}), 500
 
 
