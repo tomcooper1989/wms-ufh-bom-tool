@@ -1829,7 +1829,13 @@ function generateBOM(id) {
   // The combined list builds itself the moment any BOM exists -- no "combine all?" prompt to
   // click through first.
   if(Object.values(panels).some(function(x){return x.bom&&x.bom.length>0;})){
-    document.getElementById('erpWrap').style.display='block';
+    // Opened from inside a Hub project: the ref is already resolved silently (HUB_PROJECT_NAME/
+    // HUB_WSO, see erpResolveProjectRef) and both push buttons now go through the Hub's own
+    // bridge (postErpPushViaHub) rather than this tool's own /api/erp/push -- so this panel's own
+    // "Check Enapps connection (REST)" is testing the wrong thing entirely (this tool's own,
+    // separately-broken login, irrelevant to a push that never uses it) and just alarms/confuses
+    // for no reason. Standalone still needs the WSO entry + connection check, so only hidden here.
+    document.getElementById('erpWrap').style.display=(typeof HUB_WSO!=='undefined'&&HUB_WSO)?'none':'block';
     document.getElementById('combinedWrap').style.display='block';
     document.getElementById('pushSeparateWrap').style.display='block';
     erpResolveProjectRef();
