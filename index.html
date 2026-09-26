@@ -2367,10 +2367,15 @@ function pushCombinedToErp() {
   var project_id = document.getElementById('erpProjectId').value.trim();
   resEl.style.display = 'block';
   resEl.innerHTML = 'Pushing to Enapps…';
+  // Opened now (synchronously, before any async work) so the browser never treats it as an
+  // unrequested popup -- but blurred straight back to the opener so the user isn't dropped onto a
+  // blank tab for however long the push takes. Only actually brought to the front once there's a
+  // real page to show it (a success redirect), matching what a plain link click would look like.
   var pendingWin = window.open('', '_blank');
+  if (pendingWin) { pendingWin.blur(); window.focus(); }
   postErpPush(rows, project_id, false, 'Combined').then(function(res){
     erpRenderResult(res, false, project_id, 'combinedPushResult');
-    if (res.project_url && pendingWin) pendingWin.location = res.project_url;
+    if (res.project_url && pendingWin) { pendingWin.location = res.project_url; pendingWin.focus(); }
     else if (pendingWin) pendingWin.close();
     refreshSentHistory();
   }).catch(function(e){
@@ -2392,7 +2397,11 @@ function pushSeparateToErp() {
   // async work, so the browser never treats it as an unrequested popup) -- opened ONCE up front
   // rather than per-drawing, since every push in this sequence lands on the SAME Enapps project;
   // redirected once the whole sequence finishes, to whichever push actually returned a project_url.
+  // Blurred straight back to the opener (see pushCombinedToErp's own comment) so the user stays on
+  // this page, watching the per-drawing results come in, instead of staring at a blank tab for
+  // however long the whole sequence takes -- only brought to front once there's really something to show.
   var pendingWin = window.open('', '_blank');
+  if (pendingWin) { pendingWin.blur(); window.focus(); }
   var lastProjectUrl = null;
   entries.reduce(function(chain, p){
     return chain.then(function(){
@@ -2416,7 +2425,7 @@ function pushSeparateToErp() {
     });
   }, Promise.resolve()).then(function(){
     refreshSentHistory();
-    if (lastProjectUrl && pendingWin) pendingWin.location = lastProjectUrl;
+    if (lastProjectUrl && pendingWin) { pendingWin.location = lastProjectUrl; pendingWin.focus(); }
     else if (pendingWin) pendingWin.close();
   });
 }

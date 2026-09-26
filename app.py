@@ -5,7 +5,7 @@ Deployed on Railway. Users access via browser, no local install needed.
 
 from flask import Flask, request, jsonify, send_from_directory, redirect, session
 import os, tempfile, functools, json, datetime, re, contextlib, uuid, hmac, hashlib, base64, time
-import urllib.request, urllib.error
+import urllib.request, urllib.error, urllib.parse
 
 # Import all extraction logic from server.py
 from server import scan_pdf_pages, scan_and_extract, extract_page
@@ -568,13 +568,24 @@ def api_erp_status():
 @login_required
 def api_erp_project_by_wso():
     """WSO -> Enapps' own full ea_project name (Postgres-view text search), so the Push-to-ERP
-    field can find that name instead of it being copy-pasted out of Enapps by hand."""
+    field can find that name instead of it being copy-pasted out of Enapps by hand.
+
+    This tool's own Enapps login is separately broken (see api_erp_push's own comment) -- calling
+    erp_connector.find_ea_project_by_wso here directly always 401ed, silently leaving whatever bare
+    WSO was typed sitting in the project-id field, which Enapps then rejects on push with "could not
+    find match" (confirmed 2026-09-26 against a real drawing). The Hub's OWN /api/erp/project_by_wso
+    does this exact same lookup with its own working credentials and needs no session/bridge secret
+    at all (it's a public, read-only Postgres-view text search on that side) -- proxied here instead
+    of calling erp_connector locally, same idea as api_erp_push's bridge but simpler since there's no
+    auth handshake needed for this one."""
     wso = request.args.get('wso', '')
-    if not erp_connector.is_configured():
-        return jsonify({'configured': False, 'name': None})
+    if not wso:
+        return jsonify({'configured': True, 'name': None})
+    hub_url = os.environ.get('HUB_BASE_URL', 'https://hub.wms-uk.com').rstrip('/')
     try:
-        proj = erp_connector.find_ea_project_by_wso(wso)
-        return jsonify({'configured': True, 'name': (proj or {}).get('name')})
+        req = urllib.request.Request(hub_url + '/api/erp/project_by_wso?wso=' + urllib.parse.quote(wso))
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return jsonify(json.loads(r.read().decode()))
     except Exception as e:
         return jsonify({'configured': True, 'name': None, 'error': str(e)})
 
