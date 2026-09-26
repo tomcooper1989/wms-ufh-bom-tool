@@ -574,16 +574,20 @@ def api_erp_project_by_wso():
     erp_connector.find_ea_project_by_wso here directly always 401ed, silently leaving whatever bare
     WSO was typed sitting in the project-id field, which Enapps then rejects on push with "could not
     find match" (confirmed 2026-09-26 against a real drawing). The Hub's OWN /api/erp/project_by_wso
-    does this exact same lookup with its own working credentials and needs no session/bridge secret
-    at all (it's a public, read-only Postgres-view text search on that side) -- proxied here instead
-    of calling erp_connector locally, same idea as api_erp_push's bridge but simpler since there's no
-    auth handshake needed for this one."""
+    does this exact same lookup with its own working credentials -- the SAME function Second Fix
+    Tracker's own Send to ERP already relies on -- proxied here instead of calling erp_connector
+    locally, same bridge-secret handshake as api_erp_push (the route itself has no capability gate on
+    the Hub's side, but it still sits behind that Hub's own blanket "needs a session" check, so a
+    server-to-server caller with no browser session needs the same secret to get past that)."""
     wso = request.args.get('wso', '')
     if not wso:
         return jsonify({'configured': True, 'name': None})
     hub_url = os.environ.get('HUB_BASE_URL', 'https://hub.wms-uk.com').rstrip('/')
     try:
-        req = urllib.request.Request(hub_url + '/api/erp/project_by_wso?wso=' + urllib.parse.quote(wso))
+        req = urllib.request.Request(
+            hub_url + '/api/erp/project_by_wso?wso=' + urllib.parse.quote(wso),
+            headers={'X-Hub-Bridge-Secret': os.environ.get('HUB_SSO_SECRET', '')},
+        )
         with urllib.request.urlopen(req, timeout=15) as r:
             return jsonify(json.loads(r.read().decode()))
     except Exception as e:
