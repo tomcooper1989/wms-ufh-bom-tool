@@ -266,6 +266,13 @@ table.bom tr:hover td { background: var(--bg); }
           <button class="q-btn" onclick="setBulk('insulation','No')">No</button>
         </div>
       </div>
+      <div id="bulkMarkerSection" style="display:none;">
+        <p style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.4rem;">Marker Spray (Tacker / DuoClip / Castellated / Solo / Clip)</p>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;">
+          <button class="q-btn" onclick="setBulkMarkerSpray(true)">Yes</button>
+          <button class="q-btn" onclick="setBulkMarkerSpray(false)">No</button>
+        </div>
+      </div>
     </div>
     <div id="bulkStatus" style="font-size:12px;color:var(--success);margin-top:0.6rem;display:none;"></div>
     <button id="bulkGenBtn" onclick="generateAllBOMs()" style="display:none;margin-top:0.875rem;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer;">&#9889; Generate all BOMs</button>
@@ -357,6 +364,10 @@ table.bom tr:hover td { background: var(--bg); }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 var SERVER = '';
+// Systems whose DPM/Separating Layer question also carries the Marker Spray toggle -- same list
+// both places, kept as one array so they can never drift apart.
+var DPM_SYSTEMS = ['AmbiTak','AmbiDuoClip','AmbiCastellated','AmbiSolo','AmbiClip'];
+var MARKER_SPRAY_SYSTEMS = DPM_SYSTEMS;
 var panels = {};
 var panelCount = 0;
 var progressMap = {};
@@ -1448,7 +1459,7 @@ function renderQs(id) {
   var h = '';
   if (PIPE16_SYSTEMS.indexOf(sys) > -1)
     h += pipeSupplierCard(p.answers.pipe16, 'panels[' + id + '].answers.pipe16=this.value');
-  if (['AmbiTak','AmbiDuoClip','AmbiCastellated','AmbiSolo','AmbiClip'].indexOf(sys) > -1)
+  if (DPM_SYSTEMS.indexOf(sys) > -1)
     h += qb(id,'dpm','DPM, Separating Layer, or both?',['Neither','DPM only','Separating Layer only','Both DPM and Separating Layer'], markerSprayBtn(id));
   if (sys === 'AmbiTak') h += qb(id,'clips','40mm or 60mm clips?',['40mm','60mm']);
   if (sys === 'AmbiCastellated') h += qb(id,'cast','Concrete/flowscreed or screed over?',['Concrete / Flowscreed','Screed']);
@@ -1647,7 +1658,7 @@ function renderSys2Qs(id) {
   var h = '';
   if (PIPE16_SYSTEMS.indexOf(sys) > -1)
     h += pipeSupplierCard(panels[id].sys2.answers.pipe16, 'panels[' + id + '].sys2.answers.pipe16=this.value');
-  if (['AmbiTak','AmbiDuoClip','AmbiCastellated','AmbiSolo','AmbiClip'].indexOf(sys) > -1)
+  if (DPM_SYSTEMS.indexOf(sys) > -1)
     h += qb2(id,'dpm','DPM, Separating Layer, or both?',['Neither','DPM only','Separating Layer only','Both DPM and Separating Layer'], markerSprayBtn2(id));
   if (sys === 'AmbiTak') h += qb2(id,'clips','40mm or 60mm clips?',['40mm','60mm']);
   if (sys === 'AmbiCastellated') h += qb2(id,'cast','Concrete/flowscreed or screed over?',['Concrete / Flowscreed','Screed']);
@@ -1767,7 +1778,7 @@ function generateBOM(id) {
   if(gross<=0 && net<=0){out.innerHTML=er('Please enter a gross or net floor area.');return;}
   var ll=p.loops.map(function(l){return parseFloat(l.len);}).filter(function(v){return !isNaN(v)&&v>0;});
   if(!ll.length){out.innerHTML=er('Please enter at least one loop length.');return;}
-  if(['AmbiTak','AmbiDuoClip','AmbiCastellated','AmbiSolo','AmbiClip'].indexOf(sys)>-1&&!p.answers.dpm){out.innerHTML=er('Please answer the DPM question.');return;}
+  if(DPM_SYSTEMS.indexOf(sys)>-1&&!p.answers.dpm){out.innerHTML=er('Please answer the DPM question.');return;}
   if(sys==='AmbiTak'&&!p.answers.clips){out.innerHTML=er('Please select clip size.');return;}
   if(sys==='AmbiCastellated'&&!p.answers.cast){out.innerHTML=er('Please answer the overfloor question.');return;}
   if((sys==='AmbiDeck20'||sys==='AmbiDeck18')&&!p.answers.sub){out.innerHTML=er('Please select subfloor type.');return;}
@@ -1985,21 +1996,22 @@ function checkBulkBar() {
   var allDone = Object.values(progressMap).every(function(v){ return v === 'done' || v === 'error'; });
   if(!allDone || Object.keys(progressMap).length === 0) return;
 
-  var needsDpm=false, needsClips=false, needsSub=false, needsCast=false, needsInsulation=false;
+  var needsDpm=false, needsClips=false, needsSub=false, needsCast=false, needsInsulation=false, needsMarker=false;
   var hasMultiFloor = Object.keys(panels).some(function(id) {
     var data = (window._floorPicker || {})[parseInt(id)];
     return data && data.pages && data.pages.length > 1;
   });
   Object.values(panels).forEach(function(p) {
     var sys = p.system_type || '';
-    if(['AmbiTak','AmbiDuoClip','AmbiCastellated','AmbiSolo'].indexOf(sys)>-1) needsDpm=true;
+    if(DPM_SYSTEMS.indexOf(sys)>-1) needsDpm=true;
     if(sys==='AmbiTak'||sys==='AmbiDuoClip') needsClips=true;
     if(sys==='AmbiDeck20'||sys==='AmbiDeck18') needsSub=true;
     if(sys==='AmbiCastellated') needsCast=true;
     if(['AmbiTak','AmbiDuoClip','AmbiClip','AmbiCastellated'].indexOf(sys)>-1) needsInsulation=true;
+    if(MARKER_SPRAY_SYSTEMS.indexOf(sys)>-1) needsMarker=true;
   });
   var bar = document.getElementById('bulkBar');
-  var showBar = needsDpm||needsClips||needsSub||needsCast||needsInsulation||hasMultiFloor;
+  var showBar = needsDpm||needsClips||needsSub||needsCast||needsInsulation||needsMarker||hasMultiFloor;
   bar.style.display = showBar ? 'block' : 'none';
   document.getElementById('bulkFloorSection').style.display = hasMultiFloor ? 'block' : 'none';
   document.getElementById('bulkDpmSection').style.display = needsDpm ? 'block' : 'none';
@@ -2007,6 +2019,7 @@ function checkBulkBar() {
   document.getElementById('bulkSubSection').style.display = needsSub ? 'block' : 'none';
   document.getElementById('bulkCastSection').style.display = needsCast ? 'block' : 'none';
   document.getElementById('bulkInsulationSection').style.display = needsInsulation ? 'block' : 'none';
+  document.getElementById('bulkMarkerSection').style.display = needsMarker ? 'block' : 'none';
 }
 
 function setBulk(key, val) {
@@ -2021,12 +2034,28 @@ function setBulk(key, val) {
     var p = panels[nid];
     var sys = p.system_type || '';
     var applies = false;
-    if(key==='dpm'&&['AmbiTak','AmbiDuoClip','AmbiCastellated','AmbiSolo'].indexOf(sys)>-1) applies=true;
+    if(key==='dpm'&&DPM_SYSTEMS.indexOf(sys)>-1) applies=true;
     if(key==='clips'&&(sys==='AmbiTak'||sys==='AmbiDuoClip')) applies=true;
     if(key==='sub'&&(sys==='AmbiDeck20'||sys==='AmbiDeck18')) applies=true;
     if(key==='cast'&&sys==='AmbiCastellated') applies=true;
     if(key==='insulation'&&['AmbiTak','AmbiDuoClip','AmbiClip','AmbiCastellated'].indexOf(sys)>-1) applies=true;
     if(applies){ p.answers[key]=val; renderQs(nid); }
+  });
+  var status = document.getElementById('bulkStatus');
+  status.style.display='block';
+  status.textContent='✓ Applied to all compatible drawings';
+  document.getElementById('bulkGenBtn').style.display='block';
+}
+
+function setBulkMarkerSpray(on) {
+  var sec = document.getElementById('bulkMarkerSection');
+  if (sec) sec.querySelectorAll('.q-btn').forEach(function(btn){
+    btn.classList.toggle('sel', (btn.textContent.trim() === 'Yes') === on);
+  });
+  Object.keys(panels).forEach(function(id) {
+    var nid = parseInt(id);
+    var p = panels[nid];
+    if (MARKER_SPRAY_SYSTEMS.indexOf(p.system_type || '') > -1) { p.answers.marker_spray = on; renderQs(nid); }
   });
   var status = document.getElementById('bulkStatus');
   status.style.display='block';
@@ -2076,14 +2105,25 @@ function computeCombinedBom(allPanels) {
   var useConsolidate=method&&method.value==='consolidate';
   var merged={};
   var raw16={},rawMetres12=0;   // 16mm metres kept per supplier (AmbiFlex/TraffiPipe)
+  // Marker Spray is recomputed once below from the TRUE combined manifold total across every
+  // panel that's asked for it -- summing each panel's own already-rounded qty would over-count
+  // (three separate 1-manifold drawings each round up to 1 can = 3, when the real combined total
+  // of 3 manifolds only needs ceil(3/2) = 2). Always recomputed this way regardless of the pipe
+  // method above -- it has nothing to do with pipe coils, this is just how manifold-based
+  // quantities combine correctly once several drawings are merged into one list.
+  var markerManifolds=0;
   allPanels.forEach(function(p){
+    var qty=p.qty||1;
     p.bom.forEach(function(item){
       if(useConsolidate&&PIPE16[item.c])return;
       if(useConsolidate&&PIPE12[item.c])return;
+      if(item.c==='60285')return;   // Marker Spray -- recomputed below, never summed per-panel
       var key=item.c||item.pr;
       if(merged[key]){merged[key].q+=item.q;}
       else{merged[key]={pr:item.pr,c:item.c,s:item.s,q:item.q};}
     });
+    if(p.answers&&p.answers.marker_spray) markerManifolds+=(p.manifoldLoops||[]).length*qty;
+    if(p.sys2&&p.sys2.system_type&&p.sys2.answers&&p.sys2.answers.marker_spray) markerManifolds+=(p.sys2.manifoldLoops||[]).length*qty;
     if(useConsolidate){
       var pipe16Line=p.bom.filter(function(i){return PIPE16[i.c];})[0];
       var has12=p.bom.some(function(i){return PIPE12[i.c];});
@@ -2097,6 +2137,9 @@ function computeCombinedBom(allPanels) {
       if(raw16[sup]>0)calcCoils16(raw16[sup]*1.1,sup).forEach(function(c){merged[c.c]=c;});
     });
     if(rawMetres12>0)calcCoils12(rawMetres12*1.1).forEach(function(c){merged[c.c]=c;});
+  }
+  if(markerManifolds>0){
+    merged['60285']={pr:'Marker Spray',c:'60285',s:'Marker Spray - 700ml (Yellow)',q:Math.ceil(markerManifolds/2)};
   }
   return Object.values(merged);
 }
