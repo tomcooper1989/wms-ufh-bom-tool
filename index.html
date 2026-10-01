@@ -273,6 +273,13 @@ table.bom tr:hover td { background: var(--bg); }
           <button class="q-btn" onclick="setBulkMarkerSpray(false)">No</button>
         </div>
       </div>
+      <div id="bulkManifoldBoardSection" style="display:none;">
+        <p style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.4rem;">Manifold Board (Tacker / DuoClip / Castellated / Solo / Clip)</p>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;">
+          <button class="q-btn" onclick="setBulkManifoldBoard(true)">Yes</button>
+          <button class="q-btn" onclick="setBulkManifoldBoard(false)">No</button>
+        </div>
+      </div>
     </div>
     <div id="bulkStatus" style="font-size:12px;color:var(--success);margin-top:0.6rem;display:none;"></div>
     <button id="bulkGenBtn" onclick="generateAllBOMs()" style="display:none;margin-top:0.875rem;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer;">&#9889; Generate all BOMs</button>
@@ -1460,7 +1467,7 @@ function renderQs(id) {
   if (PIPE16_SYSTEMS.indexOf(sys) > -1)
     h += pipeSupplierCard(p.answers.pipe16, 'panels[' + id + '].answers.pipe16=this.value');
   if (DPM_SYSTEMS.indexOf(sys) > -1)
-    h += qb(id,'dpm','DPM, Separating Layer, or both?',['Neither','DPM only','Separating Layer only','Both DPM and Separating Layer'], markerSprayBtn(id));
+    h += qb(id,'dpm','DPM, Separating Layer, or both?',['Neither','DPM only','Separating Layer only','Both DPM and Separating Layer'], markerSprayBtn(id) + manifoldBoardBtn(id));
   if (sys === 'AmbiTak') h += qb(id,'clips','40mm or 60mm clips?',['40mm','60mm']);
   if (sys === 'AmbiCastellated') h += qb(id,'cast','Concrete/flowscreed or screed over?',['Concrete / Flowscreed','Screed']);
   if (sys === 'AmbiDeck20' || sys === 'AmbiDeck18') h += qb(id,'sub','Timber or concrete subfloor?',['Timber','Concrete']);
@@ -1499,6 +1506,15 @@ function markerSprayBtn(id) {
 function markerSprayBtn2(id) {
   var sel = !!panels[id].sys2.answers.marker_spray;
   return '<button class="q-btn' + (sel?' sel':'') + '" onclick="panels[' + id + '].sys2.answers.marker_spray=!panels[' + id + '].sys2.answers.marker_spray;renderSys2Qs(' + id + ')">Marker Spray</button>';
+}
+// Manifold Board -- same independent-toggle pattern as Marker Spray, appended right after it.
+function manifoldBoardBtn(id) {
+  var sel = !!panels[id].answers.manifold_board;
+  return '<button class="q-btn' + (sel?' sel':'') + '" onclick="panels[' + id + '].answers.manifold_board=!panels[' + id + '].answers.manifold_board;renderQs(' + id + ')">Manifold Board</button>';
+}
+function manifoldBoardBtn2(id) {
+  var sel = !!panels[id].sys2.answers.manifold_board;
+  return '<button class="q-btn' + (sel?' sel':'') + '" onclick="panels[' + id + '].sys2.answers.manifold_board=!panels[' + id + '].sys2.answers.manifold_board;renderSys2Qs(' + id + ')">Manifold Board</button>';
 }
 
 function ceil(a,b){ return Math.ceil(a/b); }
@@ -1659,7 +1675,7 @@ function renderSys2Qs(id) {
   if (PIPE16_SYSTEMS.indexOf(sys) > -1)
     h += pipeSupplierCard(panels[id].sys2.answers.pipe16, 'panels[' + id + '].sys2.answers.pipe16=this.value');
   if (DPM_SYSTEMS.indexOf(sys) > -1)
-    h += qb2(id,'dpm','DPM, Separating Layer, or both?',['Neither','DPM only','Separating Layer only','Both DPM and Separating Layer'], markerSprayBtn2(id));
+    h += qb2(id,'dpm','DPM, Separating Layer, or both?',['Neither','DPM only','Separating Layer only','Both DPM and Separating Layer'], markerSprayBtn2(id) + manifoldBoardBtn2(id));
   if (sys === 'AmbiTak') h += qb2(id,'clips','40mm or 60mm clips?',['40mm','60mm']);
   if (sys === 'AmbiCastellated') h += qb2(id,'cast','Concrete/flowscreed or screed over?',['Concrete / Flowscreed','Screed']);
   if (sys === 'AmbiDeck20' || sys === 'AmbiDeck18') h += qb2(id,'sub','Timber or concrete subfloor?',['Timber','Concrete']);
@@ -1719,6 +1735,10 @@ function calcBOM(id, src, isSys2, includeManifolds) {
   function dpm(){var a=src.answers.dpm;if(a==='Separating Layer only'||a==='Both DPM and Separating Layer')bom.push({pr:'Separating Layer',c:'46699',s:'DPM Black 500 Gauge (200m\u00b2 per Roll)',q:1});if(a==='DPM only'||a==='Both DPM and Separating Layer')bom.push({pr:'DPM 1200 Gauge',c:'46701',s:'DPM Black 1200 Gauge (100m\u00b2 per Roll)',q:ceil(gross,80)});}
   // 1 can per 2 manifolds (1 manifold still gets 1 can) -- independent of the DPM/Separating Layer choice.
   function markerSpray(){if(src.answers.marker_spray)bom.push({pr:'Marker Spray',c:'60285',s:'Marker Spray - 700ml (Yellow)',q:Math.ceil(nMf/2)});}
+  // 1 per manifold -- a straight linear qty (no rounding/division), so unlike Marker Spray it
+  // never needs special combined-list recompute: summing each panel's own qty already gives the
+  // correct combined total (1+1 manifold = 2, same as 2 manifolds combined -> 2).
+  function manifoldBoard(){if(src.answers.manifold_board)bom.push({pr:'Manifold Board',c:'60715',s:'Powder Coated Manifold Backboard Stand (750mm wide x 520mm height)',q:nMf});}
   function mfs(sz){if(includeManifolds===false)return;src.manifoldLoops.forEach(function(lps,i){var m=mfc(lps,sz);bom.push({pr:'Manifold'+(nMf>1?' (M'+(i+1)+')':''),c:m.code,s:m.desc,q:1});});}
   function p16(){var c=pipe16(tm);var P=PIPE16_PRODUCTS[src.answers.pipe16]||PIPE16_PRODUCTS.AmbiFlex;if(c.c500>0)bom.push({pr:P.name,c:P.c500.c,s:P.c500.s,q:c.c500});if(c.c240>0)bom.push({pr:P.name,c:P.c240.c,s:P.c240.s,q:c.c240});if(c.c120>0)bom.push({pr:P.name,c:P.c120.c,s:P.c120.s,q:c.c120});}
   function p12(){var c=pipe12(tm);if(c.c500>0)bom.push({pr:'12mm AmbiFlex Pipe',c:'30050',s:'12mm AmbiFlex Pipe \u2013 500m Coil',q:c.c500});if(c.c200>0)bom.push({pr:'12mm AmbiFlex Pipe',c:'30020',s:'12mm AmbiFlex Pipe \u2013 200m Coil',q:c.c200});if(c.c100>0)bom.push({pr:'12mm AmbiFlex Pipe',c:'39000',s:'12mm AmbiFlex Pipe \u2013 100m Coil',q:c.c100});}
@@ -1728,17 +1748,17 @@ function calcBOM(id, src, isSys2, includeManifolds) {
   // Tail tape: per manifold by size \u2014 2\u20133 port: 2 rolls, 4\u20137 port: 3, 8+ port: 4.
   function tailtape(){var rolls=src.manifoldLoops.reduce(function(t,p){return t+(p>=8?4:(p>=4?3:2));},0);bom.push({pr:'Tail Tape',c:'46810',s:'Tail Tape \u2013 rolls per manifold (2\u20133 port: 2, 4\u20137: 3, 8+: 4)',q:rolls});}
 
-  if(sys==='AmbiTak'){dpm();markerSpray();p16();mfs('16mm');var sc=src.answers.clips==='40mm'?{pr:'40mm Non-Stick SpeedClips (300 pcs)',c:'41531',s:'40mm Non-Stick SpeedClips \u2013 300pcs'}:{pr:'60mm Non-Stick SpeedClips (300 pcs)',c:'41551',s:'60mm Non-Stick SpeedClips \u2013 300pcs'};bom.push({pr:sc.pr,c:sc.c,s:sc.s,q:ceil(totalL*1000/150,300)});bom.push({pr:'Red Clips (50mm)',c:'41506',s:'Red Clips 50mm (Box)',q:Math.max(1,ceil(net,50))});tailtape();border();tape();insulation();}
-  else if(sys==='AmbiClip'){dpm();markerSpray();p16();mfs('16mm');bom.push({pr:'Clip Rail',c:'',s:'Clip Rail (m)',q:Math.ceil(net)});bom.push({pr:'Red Clips (50mm)',c:'41506',s:'Red Clips 50mm (Box)',q:Math.max(1,ceil(net,50))});bom.push({pr:'Black Clips (40mm)',c:'41530',s:'Black Clips 40mm (Box)',q:Math.ceil(totMfL*1.2)});tailtape();border();tape();insulation();}
-  else if(sys==='AmbiDuoClip'){dpm();markerSpray();p16();mfs('16mm');bom.push({pr:'DuoClip Rail',c:'',s:'DuoClip Rail (m)',q:ceil(net,2)});bom.push({pr:'Red Clips (50mm)',c:'41506',s:'Red Clips 50mm (Box)',q:Math.max(1,ceil(net,50))});bom.push({pr:'Black Clips (40mm)',c:'41530',s:'Black Clips 40mm (Box)',q:Math.ceil(totMfL*1.2)});tailtape();border();tape();insulation();}
+  if(sys==='AmbiTak'){dpm();markerSpray();manifoldBoard();p16();mfs('16mm');var sc=src.answers.clips==='40mm'?{pr:'40mm Non-Stick SpeedClips (300 pcs)',c:'41531',s:'40mm Non-Stick SpeedClips \u2013 300pcs'}:{pr:'60mm Non-Stick SpeedClips (300 pcs)',c:'41551',s:'60mm Non-Stick SpeedClips \u2013 300pcs'};bom.push({pr:sc.pr,c:sc.c,s:sc.s,q:ceil(totalL*1000/150,300)});bom.push({pr:'Red Clips (50mm)',c:'41506',s:'Red Clips 50mm (Box)',q:Math.max(1,ceil(net,50))});tailtape();border();tape();insulation();}
+  else if(sys==='AmbiClip'){dpm();markerSpray();manifoldBoard();p16();mfs('16mm');bom.push({pr:'Clip Rail',c:'',s:'Clip Rail (m)',q:Math.ceil(net)});bom.push({pr:'Red Clips (50mm)',c:'41506',s:'Red Clips 50mm (Box)',q:Math.max(1,ceil(net,50))});bom.push({pr:'Black Clips (40mm)',c:'41530',s:'Black Clips 40mm (Box)',q:Math.ceil(totMfL*1.2)});tailtape();border();tape();insulation();}
+  else if(sys==='AmbiDuoClip'){dpm();markerSpray();manifoldBoard();p16();mfs('16mm');bom.push({pr:'DuoClip Rail',c:'',s:'DuoClip Rail (m)',q:ceil(net,2)});bom.push({pr:'Red Clips (50mm)',c:'41506',s:'Red Clips 50mm (Box)',q:Math.max(1,ceil(net,50))});bom.push({pr:'Black Clips (40mm)',c:'41530',s:'Black Clips 40mm (Box)',q:Math.ceil(totMfL*1.2)});tailtape();border();tape();insulation();}
   else if(sys==='AmbiPlate'){p16();mfs('16mm');bom.push({pr:'OverPlate',c:'44520',s:'OverPlate (390\u00d71000mm, 2 Grooves at 200mm)',q:Math.ceil(net*2)});bom.push({pr:'Aluminium Foil Tape',c:'92004',s:'Aluminium Foil Tape \u2013 50m',q:nMf});bom.push({pr:'16mm Nail in Pipe Clips (100pcs)',c:'41500',s:'16mm Nail in Pipe Clips (100pcs)',q:ceil(tm,30)});bom.push({pr:'140/10 Galv Staples',c:'60280',s:'140/10 Galv Staples (Pack of 5000)',q:nMf});bom.push({pr:'OverPlate Clout Nails',c:'41501',s:'OverPlate Clout Nails \u2013 25mm (815pcs/bag)',q:ceil(net*8,815)});}
   else if(sys==='AmbiLoFloor'){p12();mfs('12mm');var bq=ceil((gross*1.2)/0.72,1);bom.push({pr:'LoFloor Base',c:'46692',s:'LoFloor Base \u2013 12mm MR MDF Alu-Foil Grooved, 1200\u00d7600mm',q:bq});bom.push({pr:'LoFloor Topboard',c:'46693',s:'LoFloor Top \u2013 6mm MR MDF Alu-Foil, 1200\u00d7600mm',q:bq});bom.push({pr:'12mm Nail in Pipe Clips (100pcs)',c:'41490',s:'12mm Nail in Pipe Clips (100pcs)',q:ceil(tm,30)});}
   else if(sys==='AmbiJoFloor'){p12();mfs('12mm');var jbGrossW=gross*1.2;var jbBase=ceil(jbGrossW,1.44);var jbTop=ceil(jbGrossW,0.72);bom.push({pr:'JoFloor Base',c:'46690',s:'JoFloor Base \u2013 22mm Grooved P5 Chipboard Alu-Foil, 2400\u00d7600mm',q:jbBase});bom.push({pr:'JoFloor Topboard',c:'46691',s:'JoFloor Top \u2013 6mm MDF Printed Alu-Foil, 1200\u00d7600mm',q:jbTop});bom.push({pr:'12mm Nail in Pipe Clips (100pcs)',c:'41490',s:'12mm Nail in Pipe Clips (100pcs)',q:ceil(tm,30)});}
   else if(sys==='OverDeck20'){p16();mfs('16mm');bom.push({pr:'OverDeck 20 Universal Panel',c:'26190',s:'OverDeck 20 Universal Panel 1200\u00d7600\u00d720mm at 150mm centres',q:ceil((gross*0.9*1.1)/0.72,1)});bom.push({pr:'OverDeck 20 Highway Panel',c:'49191',s:'OverDeck 20 Highway Panel 1200\u00d7600\u00d720mm at 50mm centres',q:ceil((gross*0.1*1.1)/0.72,1)});}
   else if(sys==='AmbiDeck20'){var t20=src.answers.sub==='Timber';p16();mfs('16mm');if(t20){bom.push({pr:'16mm Nail in Pipe Clips (100pcs)',c:'41500',s:'16mm Nail in Pipe Clips (100pcs)',q:ceil(gross,40)});bom.push({pr:'AmbiDeck Screws 4.0\u00d740mm',c:'46193',s:'AmbiDeck Screws 4.0\u00d740mm',q:ceil(gross,30)});bom.push({pr:'AmbiDeck Washers 0.6\u00d736mm',c:'46195',s:'AmbiDeck Washers 0.6\u00d736mm',q:ceil(gross,15)});}else{bom.push({pr:'AmbiDeck Screws 4.0\u00d740mm',c:'46193',s:'AmbiDeck Screws 4.0\u00d740mm',q:ceil(gross,30)});bom.push({pr:'AmbiBond Adhesive SB200',c:'47100',s:'AmbiBond Adhesive SB200 (17kg Tub)',q:Math.ceil(gross)});}bom.push({pr:'AmbiDeck 20 Pro',c:'46173',s:'AmbiDeck\u00ae 20 Pro (20\u00d7600\u00d71200mm)',q:ceil((gross/0.72)*1.1,1)});bom.push({pr:'AmbiDeck 20 Pro Highway',c:'46174',s:'AmbiDeck\u00ae 20 Pro Highway (20\u00d7600\u00d71200mm)',q:ceil((gross*0.1/0.72)*1.1,1)});bom.push({pr:'AmbiDeck 20 Pro CornerBoard',c:'46175',s:'AmbiDeck\u00ae 20 Pro CornerBoard (20\u00d7600\u00d71200mm)',q:ceil((gross*0.1/0.72)*1.1,1)});tape();}
   else if(sys==='AmbiDeck18'){var t18=src.answers.sub==='Timber';p12();mfs('12mm');if(t18){bom.push({pr:'12mm Nail in Pipe Clips (100pcs)',c:'41490',s:'12mm Nail in Pipe Clips (100pcs)',q:ceil(gross,40)});bom.push({pr:'AmbiDeck Screws 4.0\u00d740mm',c:'46193',s:'AmbiDeck Screws 4.0\u00d740mm',q:ceil(gross,30)});bom.push({pr:'AmbiDeck Washers 0.6\u00d736mm',c:'46195',s:'AmbiDeck Washers 0.6\u00d736mm',q:ceil(gross,15)});}else{bom.push({pr:'AmbiDeck Screws 4.0\u00d740mm',c:'46193',s:'AmbiDeck Screws 4.0\u00d740mm',q:ceil(gross,30)});bom.push({pr:'AmbiBond Adhesive SB200',c:'47100',s:'AmbiBond Adhesive SB200 (17kg Tub)',q:Math.ceil(gross)});}bom.push({pr:'AmbiDeck 18',c:'46170',s:'AmbiDeck\u00ae 18 (18\u00d7600\u00d71200mm)',q:ceil((gross/0.72)*1.1,1)});bom.push({pr:'AmbiDeck 18 Highway',c:'46171',s:'AmbiDeck\u00ae 18 Highway (18\u00d7600\u00d71200mm)',q:ceil((gross*0.1/0.72)*1.1,1)});bom.push({pr:'AmbiDeck 18 CornerBoard',c:'46172',s:'AmbiDeck\u00ae 18 CornerBoard (18\u00d7600\u00d71200mm)',q:ceil((gross*0.1/0.72)*1.1,1)});tape();}
-  else if(sys==='AmbiCastellated'){dpm();markerSpray();p16();mfs('16mm');var pro=src.answers.cast==='Concrete / Flowscreed';bom.push(pro?{pr:'AmbiCastellated PRO Panel',c:'46325',s:'AmbiCastellated PRO Self Adhesive Back (1400\u00d7800mm)',q:ceil((gross/1.12)*1.1,1)}:{pr:'AmbiCastellated Panel',c:'46320',s:'AmbiCastellated Standard Panel (1400\u00d7800mm)',q:ceil((gross/1.12)*1.1,1)});bom.push({pr:'Border Edge Insulation with Skirt',c:'41641',s:'Border Edge Insulation with Skirt \u2013 50m (8mm\u00d7120mm)',q:ceil(gross,35)});var sr=(src.answers.dpm==='Separating Layer only'||src.answers.dpm==='Both DPM and Separating Layer')?1:0;bom.push({pr:'Cloth Tape',c:'92005',s:'Cloth Tape Black 70mm wide - 45m roll',q:ceil(gross,13.5)+sr});bom.push({pr:'140/10 Galv Staples',c:'60280',s:'140/10 Galv Staples (Pack of 5000)',q:ceil(gross*1.1,50)});insulation();}
-  else if(sys==='AmbiSolo'){dpm();markerSpray();p12();mfs('12mm');bom.push({pr:'AmbiSolo Panel \u2013 12mm Pipe',c:'46100',s:'AmbiSolo Panel \u2013 12mm Pipe (1000\u00d7600mm, Self Adhesive)',q:Math.ceil((gross/0.6)*1.1)});bom.push({pr:'12mm Nail in Pipe Clips (100pcs)',c:'41490',s:'12mm Nail in Pipe Clips (100pcs)',q:Math.ceil(net/30)});border();bom.push({pr:'Cloth Tape',c:'92005',s:'Cloth Tape Black 70mm wide - 45m roll',q:nMf});insulation();}
+  else if(sys==='AmbiCastellated'){dpm();markerSpray();manifoldBoard();p16();mfs('16mm');var pro=src.answers.cast==='Concrete / Flowscreed';bom.push(pro?{pr:'AmbiCastellated PRO Panel',c:'46325',s:'AmbiCastellated PRO Self Adhesive Back (1400\u00d7800mm)',q:ceil((gross/1.12)*1.1,1)}:{pr:'AmbiCastellated Panel',c:'46320',s:'AmbiCastellated Standard Panel (1400\u00d7800mm)',q:ceil((gross/1.12)*1.1,1)});bom.push({pr:'Border Edge Insulation with Skirt',c:'41641',s:'Border Edge Insulation with Skirt \u2013 50m (8mm\u00d7120mm)',q:ceil(gross,35)});var sr=(src.answers.dpm==='Separating Layer only'||src.answers.dpm==='Both DPM and Separating Layer')?1:0;bom.push({pr:'Cloth Tape',c:'92005',s:'Cloth Tape Black 70mm wide - 45m roll',q:ceil(gross,13.5)+sr});bom.push({pr:'140/10 Galv Staples',c:'60280',s:'140/10 Galv Staples (Pack of 5000)',q:ceil(gross*1.1,50)});insulation();}
+  else if(sys==='AmbiSolo'){dpm();markerSpray();manifoldBoard();p12();mfs('12mm');bom.push({pr:'AmbiSolo Panel \u2013 12mm Pipe',c:'46100',s:'AmbiSolo Panel \u2013 12mm Pipe (1000\u00d7600mm, Self Adhesive)',q:Math.ceil((gross/0.6)*1.1)});bom.push({pr:'12mm Nail in Pipe Clips (100pcs)',c:'41490',s:'12mm Nail in Pipe Clips (100pcs)',q:Math.ceil(net/30)});border();bom.push({pr:'Cloth Tape',c:'92005',s:'Cloth Tape Black 70mm wide - 45m roll',q:nMf});insulation();}
   else if(sys==='AmbiFloat10'){
     var afWaste = (src.answers.af_wastage !== undefined ? parseFloat(src.answers.af_wastage) : 10) / 100;
     var afHwy   = (src.answers.af_highway  !== undefined ? parseFloat(src.answers.af_highway)  : 10) / 100;
@@ -1996,7 +2016,7 @@ function checkBulkBar() {
   var allDone = Object.values(progressMap).every(function(v){ return v === 'done' || v === 'error'; });
   if(!allDone || Object.keys(progressMap).length === 0) return;
 
-  var needsDpm=false, needsClips=false, needsSub=false, needsCast=false, needsInsulation=false, needsMarker=false;
+  var needsDpm=false, needsClips=false, needsSub=false, needsCast=false, needsInsulation=false, needsMarker=false, needsManifoldBoard=false;
   var hasMultiFloor = Object.keys(panels).some(function(id) {
     var data = (window._floorPicker || {})[parseInt(id)];
     return data && data.pages && data.pages.length > 1;
@@ -2009,9 +2029,10 @@ function checkBulkBar() {
     if(sys==='AmbiCastellated') needsCast=true;
     if(['AmbiTak','AmbiDuoClip','AmbiClip','AmbiCastellated'].indexOf(sys)>-1) needsInsulation=true;
     if(MARKER_SPRAY_SYSTEMS.indexOf(sys)>-1) needsMarker=true;
+    if(MARKER_SPRAY_SYSTEMS.indexOf(sys)>-1) needsManifoldBoard=true;
   });
   var bar = document.getElementById('bulkBar');
-  var showBar = needsDpm||needsClips||needsSub||needsCast||needsInsulation||needsMarker||hasMultiFloor;
+  var showBar = needsDpm||needsClips||needsSub||needsCast||needsInsulation||needsMarker||needsManifoldBoard||hasMultiFloor;
   bar.style.display = showBar ? 'block' : 'none';
   document.getElementById('bulkFloorSection').style.display = hasMultiFloor ? 'block' : 'none';
   document.getElementById('bulkDpmSection').style.display = needsDpm ? 'block' : 'none';
@@ -2020,6 +2041,7 @@ function checkBulkBar() {
   document.getElementById('bulkCastSection').style.display = needsCast ? 'block' : 'none';
   document.getElementById('bulkInsulationSection').style.display = needsInsulation ? 'block' : 'none';
   document.getElementById('bulkMarkerSection').style.display = needsMarker ? 'block' : 'none';
+  document.getElementById('bulkManifoldBoardSection').style.display = needsManifoldBoard ? 'block' : 'none';
 }
 
 function setBulk(key, val) {
@@ -2056,6 +2078,22 @@ function setBulkMarkerSpray(on) {
     var nid = parseInt(id);
     var p = panels[nid];
     if (MARKER_SPRAY_SYSTEMS.indexOf(p.system_type || '') > -1) { p.answers.marker_spray = on; renderQs(nid); }
+  });
+  var status = document.getElementById('bulkStatus');
+  status.style.display='block';
+  status.textContent='✓ Applied to all compatible drawings';
+  document.getElementById('bulkGenBtn').style.display='block';
+}
+
+function setBulkManifoldBoard(on) {
+  var sec = document.getElementById('bulkManifoldBoardSection');
+  if (sec) sec.querySelectorAll('.q-btn').forEach(function(btn){
+    btn.classList.toggle('sel', (btn.textContent.trim() === 'Yes') === on);
+  });
+  Object.keys(panels).forEach(function(id) {
+    var nid = parseInt(id);
+    var p = panels[nid];
+    if (MARKER_SPRAY_SYSTEMS.indexOf(p.system_type || '') > -1) { p.answers.manifold_board = on; renderQs(nid); }
   });
   var status = document.getElementById('bulkStatus');
   status.style.display='block';
