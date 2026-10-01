@@ -2603,6 +2603,28 @@ function reloadEverything() {
 }
 captureBootId();
 setInterval(checkForNewVersion, 15000);
+
+// When embedded in The Hub, report this page's own content height so Hub can size the iframe to
+// fit it exactly -- the whole Hub page becomes the one scrolling surface instead of this content
+// scrolling inside a fixed-height iframe box (which also used to leave Hub's own "Back to
+// Projects"/"Picking lists created" chrome permanently on-screen above it, not because anything
+// there was sticky, but because the page around a fixed-height iframe never needed to scroll).
+// Standalone (no parent) this is simply inert. Debounced so a burst of panels completing in quick
+// succession (bulk-generate) sends one resize, not one per panel.
+(function () {
+  if (window.top === window.self) return;
+  var lastSent = 0, debounceTimer = null;
+  function sendHeight() {
+    var h = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+    if (Math.abs(h - lastSent) < 4) return;   // ignore sub-pixel noise
+    lastSent = h;
+    try { window.parent.postMessage({ type: 'wms_hub_resize', height: h }, '*'); } catch (e) {}
+  }
+  function queueSend() { clearTimeout(debounceTimer); debounceTimer = setTimeout(sendHeight, 150); }
+  window.addEventListener('load', sendHeight);
+  if (window.ResizeObserver) new ResizeObserver(queueSend).observe(document.body);
+  setInterval(sendHeight, 2000);   // cheap safety net for height changes a ResizeObserver might miss
+})();
 </script>
 </body>
 </html>
