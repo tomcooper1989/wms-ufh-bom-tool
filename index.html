@@ -1755,8 +1755,8 @@ function calcBOM(id, src, isSys2, includeManifolds) {
   else if(sys==='AmbiLoFloor'){p12();mfs('12mm');var bq=ceil((gross*1.2)/0.72,1);bom.push({pr:'LoFloor Base',c:'46692',s:'LoFloor Base \u2013 12mm MR MDF Alu-Foil Grooved, 1200\u00d7600mm',q:bq});bom.push({pr:'LoFloor Topboard',c:'46693',s:'LoFloor Top \u2013 6mm MR MDF Alu-Foil, 1200\u00d7600mm',q:bq});bom.push({pr:'12mm Nail in Pipe Clips (100pcs)',c:'41490',s:'12mm Nail in Pipe Clips (100pcs)',q:ceil(tm,30)});}
   else if(sys==='AmbiJoFloor'){p12();mfs('12mm');var jbGrossW=gross*1.2;var jbBase=ceil(jbGrossW,1.44);var jbTop=ceil(jbGrossW,0.72);bom.push({pr:'JoFloor Base',c:'46690',s:'JoFloor Base \u2013 22mm Grooved P5 Chipboard Alu-Foil, 2400\u00d7600mm',q:jbBase});bom.push({pr:'JoFloor Topboard',c:'46691',s:'JoFloor Top \u2013 6mm MDF Printed Alu-Foil, 1200\u00d7600mm',q:jbTop});bom.push({pr:'12mm Nail in Pipe Clips (100pcs)',c:'41490',s:'12mm Nail in Pipe Clips (100pcs)',q:ceil(tm,30)});}
   else if(sys==='OverDeck20'){p16();mfs('16mm');bom.push({pr:'OverDeck 20 Universal Panel',c:'26190',s:'OverDeck 20 Universal Panel 1200\u00d7600\u00d720mm at 150mm centres',q:ceil((gross*0.9*1.1)/0.72,1)});bom.push({pr:'OverDeck 20 Highway Panel',c:'49191',s:'OverDeck 20 Highway Panel 1200\u00d7600\u00d720mm at 50mm centres',q:ceil((gross*0.1*1.1)/0.72,1)});}
-  else if(sys==='AmbiDeck20'){var t20=src.answers.sub==='Timber';p16();mfs('16mm');if(t20){bom.push({pr:'16mm Nail in Pipe Clips (100pcs)',c:'41500',s:'16mm Nail in Pipe Clips (100pcs)',q:ceil(gross,40)});bom.push({pr:'AmbiDeck Screws 4.0\u00d740mm',c:'46193',s:'AmbiDeck Screws 4.0\u00d740mm',q:ceil(gross,30)});bom.push({pr:'AmbiDeck Washers 0.6\u00d736mm',c:'46195',s:'AmbiDeck Washers 0.6\u00d736mm',q:ceil(gross,15)});}else{bom.push({pr:'AmbiDeck Screws 4.0\u00d740mm',c:'46193',s:'AmbiDeck Screws 4.0\u00d740mm',q:ceil(gross,30)});bom.push({pr:'AmbiBond Adhesive SB200',c:'47100',s:'AmbiBond Adhesive SB200 (17kg Tub)',q:Math.ceil(gross)});}bom.push({pr:'AmbiDeck 20 Pro',c:'46173',s:'AmbiDeck\u00ae 20 Pro (20\u00d7600\u00d71200mm)',q:ceil((gross/0.72)*1.1,1)});bom.push({pr:'AmbiDeck 20 Pro Highway',c:'46174',s:'AmbiDeck\u00ae 20 Pro Highway (20\u00d7600\u00d71200mm)',q:ceil((gross*0.1/0.72)*1.1,1)});bom.push({pr:'AmbiDeck 20 Pro CornerBoard',c:'46175',s:'AmbiDeck\u00ae 20 Pro CornerBoard (20\u00d7600\u00d71200mm)',q:ceil((gross*0.1/0.72)*1.1,1)});tape();}
-  else if(sys==='AmbiDeck18'){var t18=src.answers.sub==='Timber';p12();mfs('12mm');if(t18){bom.push({pr:'12mm Nail in Pipe Clips (100pcs)',c:'41490',s:'12mm Nail in Pipe Clips (100pcs)',q:ceil(gross,40)});bom.push({pr:'AmbiDeck Screws 4.0\u00d740mm',c:'46193',s:'AmbiDeck Screws 4.0\u00d740mm',q:ceil(gross,30)});bom.push({pr:'AmbiDeck Washers 0.6\u00d736mm',c:'46195',s:'AmbiDeck Washers 0.6\u00d736mm',q:ceil(gross,15)});}else{bom.push({pr:'AmbiDeck Screws 4.0\u00d740mm',c:'46193',s:'AmbiDeck Screws 4.0\u00d740mm',q:ceil(gross,30)});bom.push({pr:'AmbiBond Adhesive SB200',c:'47100',s:'AmbiBond Adhesive SB200 (17kg Tub)',q:Math.ceil(gross)});}bom.push({pr:'AmbiDeck 18',c:'46170',s:'AmbiDeck\u00ae 18 (18\u00d7600\u00d71200mm)',q:ceil((gross/0.72)*1.1,1)});bom.push({pr:'AmbiDeck 18 Highway',c:'46171',s:'AmbiDeck\u00ae 18 Highway (18\u00d7600\u00d71200mm)',q:ceil((gross*0.1/0.72)*1.1,1)});bom.push({pr:'AmbiDeck 18 CornerBoard',c:'46172',s:'AmbiDeck\u00ae 18 CornerBoard (18\u00d7600\u00d71200mm)',q:ceil((gross*0.1/0.72)*1.1,1)});tape();}
+  else if(sys==='AmbiDeck20'){var t20=src.answers.sub==='Timber';p16();mfs('16mm');if(t20){bom.push({pr:'16mm Nail in Pipe Clips (100pcs)',c:'41500',s:'16mm Nail in Pipe Clips (100pcs)',q:ceil(gross,40)});bom.push({pr:'AmbiDeck Screws 4.0\u00d740mm',c:'46193',s:'AmbiDeck Screws 4.0\u00d740mm',q:ceil(gross,30)});bom.push({pr:'AmbiDeck Washers 0.6\u00d736mm',c:'46195',s:'AmbiDeck Washers 0.6\u00d736mm',q:ceil(gross,15)});}else{bom.push({pr:'AmbiDeck Screws 4.0\u00d740mm',c:'46193',s:'AmbiDeck Screws 4.0\u00d740mm',q:ceil(gross,30)});bom.push({pr:'AmbiBond Adhesive SB200',c:'47100',s:'AmbiBond Adhesive SB200 (17kg Tub)',q:ceil(gross,17),ab:gross});}bom.push({pr:'AmbiDeck 20 Pro',c:'46173',s:'AmbiDeck\u00ae 20 Pro (20\u00d7600\u00d71200mm)',q:ceil((gross/0.72)*1.1,1)});bom.push({pr:'AmbiDeck 20 Pro Highway',c:'46174',s:'AmbiDeck\u00ae 20 Pro Highway (20\u00d7600\u00d71200mm)',q:ceil((gross*0.1/0.72)*1.1,1)});bom.push({pr:'AmbiDeck 20 Pro CornerBoard',c:'46175',s:'AmbiDeck\u00ae 20 Pro CornerBoard (20\u00d7600\u00d71200mm)',q:ceil((gross*0.1/0.72)*1.1,1)});tape();}
+  else if(sys==='AmbiDeck18'){var t18=src.answers.sub==='Timber';p12();mfs('12mm');if(t18){bom.push({pr:'12mm Nail in Pipe Clips (100pcs)',c:'41490',s:'12mm Nail in Pipe Clips (100pcs)',q:ceil(gross,40)});bom.push({pr:'AmbiDeck Screws 4.0\u00d740mm',c:'46193',s:'AmbiDeck Screws 4.0\u00d740mm',q:ceil(gross,30)});bom.push({pr:'AmbiDeck Washers 0.6\u00d736mm',c:'46195',s:'AmbiDeck Washers 0.6\u00d736mm',q:ceil(gross,15)});}else{bom.push({pr:'AmbiDeck Screws 4.0\u00d740mm',c:'46193',s:'AmbiDeck Screws 4.0\u00d740mm',q:ceil(gross,30)});bom.push({pr:'AmbiBond Adhesive SB200',c:'47100',s:'AmbiBond Adhesive SB200 (17kg Tub)',q:ceil(gross,17),ab:gross});}bom.push({pr:'AmbiDeck 18',c:'46170',s:'AmbiDeck\u00ae 18 (18\u00d7600\u00d71200mm)',q:ceil((gross/0.72)*1.1,1)});bom.push({pr:'AmbiDeck 18 Highway',c:'46171',s:'AmbiDeck\u00ae 18 Highway (18\u00d7600\u00d71200mm)',q:ceil((gross*0.1/0.72)*1.1,1)});bom.push({pr:'AmbiDeck 18 CornerBoard',c:'46172',s:'AmbiDeck\u00ae 18 CornerBoard (18\u00d7600\u00d71200mm)',q:ceil((gross*0.1/0.72)*1.1,1)});tape();}
   else if(sys==='AmbiCastellated'){dpm();markerSpray();manifoldBoard();p16();mfs('16mm');var pro=src.answers.cast==='Concrete / Flowscreed';bom.push(pro?{pr:'AmbiCastellated PRO Panel',c:'46325',s:'AmbiCastellated PRO Self Adhesive Back (1400\u00d7800mm)',q:ceil((gross/1.12)*1.1,1)}:{pr:'AmbiCastellated Panel',c:'46320',s:'AmbiCastellated Standard Panel (1400\u00d7800mm)',q:ceil((gross/1.12)*1.1,1)});bom.push({pr:'Border Edge Insulation with Skirt',c:'41641',s:'Border Edge Insulation with Skirt \u2013 50m (8mm\u00d7120mm)',q:ceil(gross,35)});var sr=(src.answers.dpm==='Separating Layer only'||src.answers.dpm==='Both DPM and Separating Layer')?1:0;bom.push({pr:'Cloth Tape',c:'92005',s:'Cloth Tape Black 70mm wide - 45m roll',q:ceil(gross,13.5)+sr});bom.push({pr:'140/10 Galv Staples',c:'60280',s:'140/10 Galv Staples (Pack of 5000)',q:ceil(gross*1.1,50)});insulation();}
   else if(sys==='AmbiSolo'){dpm();markerSpray();manifoldBoard();p12();mfs('12mm');bom.push({pr:'AmbiSolo Panel \u2013 12mm Pipe',c:'46100',s:'AmbiSolo Panel \u2013 12mm Pipe (1000\u00d7600mm, Self Adhesive)',q:Math.ceil((gross/0.6)*1.1)});bom.push({pr:'12mm Nail in Pipe Clips (100pcs)',c:'41490',s:'12mm Nail in Pipe Clips (100pcs)',q:Math.ceil(net/30)});border();bom.push({pr:'Cloth Tape',c:'92005',s:'Cloth Tape Black 70mm wide - 45m roll',q:nMf});insulation();}
   else if(sys==='AmbiFloat10'){
@@ -1822,14 +1822,14 @@ function generateBOM(id) {
 
   // Per-drawing quantity: multiply every line by the selected qty (default 1).
   var _qty = p.qty || 1;
-  if(_qty>1) bom.forEach(function(r){ r.q = r.q * _qty; });
+  if(_qty>1) bom.forEach(function(r){ r.q = (r.ab!=null) ? ceil(r.ab*_qty,17) : r.q * _qty; });   // AmbiBond: 1 kg/m2 in 17 kg tubs -> from the TRUE total area
 
   p.ref=ref||p.filename;
 
   var bom2 = [];
   if (p.sys2 && p.sys2.system_type) {
     bom2 = calcBOM(id, p.sys2, true, !_mixed);
-    if(_qty>1) bom2.forEach(function(r){ r.q = r.q * _qty; });
+    if(_qty>1) bom2.forEach(function(r){ r.q = (r.ab!=null) ? ceil(r.ab*_qty,17) : r.q * _qty; });
   }
   // Kept unmerged (and every other display bit generateBOM derives) on the panel itself so an
   // edit (omit/add a line) -- or a later re-generate from an answer change -- can redraw and
@@ -2149,13 +2149,14 @@ function computeCombinedBom(allPanels) {
   // of 3 manifolds only needs ceil(3/2) = 2). Always recomputed this way regardless of the pipe
   // method above -- it has nothing to do with pipe coils, this is just how manifold-based
   // quantities combine correctly once several drawings are merged into one list.
-  var markerManifolds=0;
+  var markerManifolds=0, abArea=0;   // abArea: AmbiBond adhesive m2 across every panel (1 kg/m2, 17 kg tubs) -- recomputed below like Marker Spray
   allPanels.forEach(function(p){
     var qty=p.qty||1;
     p.bom.forEach(function(item){
       if(useConsolidate&&PIPE16[item.c])return;
       if(useConsolidate&&PIPE12[item.c])return;
       if(item.c==='60285')return;   // Marker Spray -- recomputed below, never summed per-panel
+      if(item.c==='47100'&&item.ab!=null){ abArea+=item.ab*qty; return; }   // AmbiBond -- recomputed below from the true combined area
       var key=item.c||item.pr;
       if(merged[key]){merged[key].q+=item.q;}
       else{merged[key]={pr:item.pr,c:item.c,s:item.s,q:item.q};}
@@ -2176,6 +2177,7 @@ function computeCombinedBom(allPanels) {
     });
     if(rawMetres12>0)calcCoils12(rawMetres12*1.1).forEach(function(c){merged[c.c]=c;});
   }
+  if(abArea>0){ var _abq=ceil(abArea,17)+(merged['47100']?merged['47100'].q:0); merged['47100']={pr:'AmbiBond Adhesive SB200',c:'47100',s:'AmbiBond Adhesive SB200 (17kg Tub)',q:_abq}; }   // + any hand-added AmbiBond line
   if(markerManifolds>0){
     merged['60285']={pr:'Marker Spray',c:'60285',s:'Marker Spray - 700ml (Yellow)',q:Math.ceil(markerManifolds/2)};
   }
