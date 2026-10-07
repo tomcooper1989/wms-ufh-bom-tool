@@ -2592,6 +2592,10 @@ function checkForNewVersion() {
     banner.innerHTML = '<span>🔄 A new version of Picking list is available.</span>'
       + '<button style="background:#fff;color:#0a4d8c;font-weight:700;padding:6px 12px;white-space:nowrap;border-radius:6px" onclick="reloadEverything()">Reload</button>';
     document.body.appendChild(banner);
+    // Embedded in The Hub the frame is as tall as the whole page (it reports its content height so the Hub can size it), so this
+    // bottom-right fixed banner sits far below the visible area and is never seen (and scrollIntoView does nothing for a fixed
+    // element). Ask The Hub to show its own prompt in ITS window, where it is always on screen. Standalone this banner is fine.
+    if (window.top !== window.self) { try { window.top.postMessage({type:'wms-tool-new-version', tool:'Picking list'}, '*'); } catch (e) {} }
   }).catch(function(){});
 }
 // When embedded as a Project-tab iframe in The Hub, a plain reload here only refreshes this
@@ -2628,5 +2632,6 @@ setInterval(checkForNewVersion, 15000);
   setInterval(sendHeight, 2000);   // cheap safety net for height changes a ResizeObserver might miss
 })();
 </script>
+<script src="https://hub.wms-uk.com/tool-feedback.js" data-tool="Picking list" defer></script>
 </body>
 </html>
